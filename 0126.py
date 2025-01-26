@@ -35,10 +35,11 @@ if __name__ == "__main__":
     cell_values = {
         'A2': '抹茶大福',
         'A3': 'プリン大福',
-        'A4': 'チョコ大福'
+        'A4': 'チョコ大福',
+        'A5': 'イチゴ大福'
     }
     
     excel_op = ExcelOperator(input_file1)
     excel_op.write_multiple_cells_and_save(cell_values)
 
-#2025/1/26 ex1にA2に抹茶大福、A3にプリン大福、A4にチョコ大福を書き込みましたOK
+#2025/1/26 ex1_A5にいちご大福を書き込みましたOK
