@@ -35,7 +35,7 @@ class ExcelToPDFConverter:
             # ファイルを閉じる
             wb.Close()
             excel.Quit()
-            
+        
             print(f"PDFファイルを作成しました: {self.output_file}")
             
         except Exception as e:
