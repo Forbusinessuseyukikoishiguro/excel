@@ -1,0 +1,58 @@
+def _check_empty_cells(self) -> Status:
+    """必須項目の空欄チェック - TOは各TORICOグループで1つ以上あればOK"""
+    try:
+        empty_cells = []  # 空欄のリスト
+        torico_groups = {}  # TORICO値でグループ化
+
+        # 1. TORICOでグループ化してTOの空白チェック
+        for idx, row in self.filtered_df.iterrows():
+            torico_value = row["TORICO"]
+            if pd.isna(torico_value):
+                continue
+
+            if torico_value not in torico_groups:
+                torico_groups[torico_value] = {
+                    'rows': [],
+                    'has_to': False
+                }
+
+            # TOの値をチェック
+            to_value = row.get("TO", "")
+            torico_groups[torico_value]['rows'].append(idx + 2)
+            
+            # 空でないTOが見つかった場合
+            if not pd.isna(to_value) and str(to_value).strip() != "":
+                torico_groups[torico_value]['has_to'] = True
+
+        # TORICOグループごとにTOの有無をチェック
+        for torico_value, group in torico_groups.items():
+            if not group['has_to']:
+                rows = [str(row) for row in group['rows']]
+                empty_cells.append(
+                    f"TORICO値[{torico_value}]のグループにTOの入力がありません "
+                    f"(対象行: {', '.join(rows)})"
+                )
+
+        # 2. TO/CC/BCC以外の列の空欄チェック
+        for column in self.filtered_df.columns:
+            # CC, BCCは空欄チェック対象外
+            if column in ["CC", "BCC"]:
+                continue
+
+            for idx, value in enumerate(self.filtered_df[column], start=2):
+                if pd.isna(value) or str(value).strip() == "":
+                    empty_cells.append(f"行{idx}, 列[{column}]が空欄")
+
+        # エラー報告
+        if empty_cells:
+            debug_print("\n【必須項目の空欄エラー】", True)
+            for error in empty_cells:
+                debug_print(f"- {error}", True)
+            return Status.USER_ERROR
+
+        debug_print("空欄チェック完了 - 問題なし")
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"空欄チェックエラー: {str(e)}", True)
+        return Status.SYSTEM_ERROR
