@@ -1,0 +1,279 @@
+# ファイル名: ck005.py
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    ALL_EXISTS = 0  # 全て存在している
+    NORMAL = 1  # 正常終了（継続処理）
+    NOT_EXISTS = 2  # 存在しない
+    SYSTEM_ERROR = 9  # 予期せぬエラー
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+def load_and_filter_torico(file_path: str) -> tuple[pd.DataFrame, Status]:
+    """
+    TORICOデータを読み込みフィルタリングする関数
+    Args:
+        file_path: TORICOファイルのパス
+    Returns:
+        tuple[DataFrame, Status]: フィルタリング済みデータとステータス
+    """
+    try:
+        debug_print("\n=== TORICOデータ読み込み・フィルタリング開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("TORICOファイルが存在しません", True)
+            return None, Status.NOT_EXISTS
+
+        # データ読み込み（すべて文字列として読み込み）
+        debug_print(f"ファイル読み込み: {file_path}")
+        df = pd.read_excel(file_path, dtype=str)
+        debug_print(f"読み込み完了: {len(df)}行")
+
+        # TORICO列の確認
+        debug_print("\n【TORICO列チェック】", indent_level=1)
+        if "TORICO" not in df.columns:
+            # A列をTORICO列として取得
+            debug_print("TORICO列名が存在しないため、A列を使用", indent_level=2)
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+
+        # TORICO列でフィルタリング（空でないデータのみ）
+        filtered_df = df[
+            df["TORICO"].notna()  # NaNでない
+            & (df["TORICO"].str.strip() != "")  # 空文字でない
+        ].copy()
+
+        # フィルタリング結果の表示
+        debug_print("\n【フィルタリング結果】", indent_level=1)
+        debug_print(f"元データ: {len(df)}行", indent_level=2)
+        debug_print(f"フィルタ後: {len(filtered_df)}行", indent_level=2)
+        debug_print(f"除外: {len(df) - len(filtered_df)}行", indent_level=2)
+
+        # H列の設備名を取得
+        debug_print("\n【H列設備名取得】", indent_level=1)
+        equipment_names = []
+        h_column_values = filtered_df.iloc[:, 7]  # H列を取得
+
+        for idx, value in enumerate(h_column_values):
+            cleaned_value = str(value).strip()
+            if cleaned_value and cleaned_value.lower() != "nan":
+                equipment_names.append({"row": idx + 1, "name": cleaned_value})
+                debug_print(f"行{idx + 1}: [{cleaned_value}]", indent_level=2)
+
+        debug_print(f"\n取得した設備名: {len(equipment_names)}件")
+        return filtered_df, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"TORICO処理エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None, Status.SYSTEM_ERROR
+
+
+def get_d1_column_names(file_path: str) -> tuple[list, Status]:
+    """
+    実績確報値のD1以降の列名を取得する関数
+    Args:
+        file_path: 実績確報値ファイルのパス
+    Returns:
+        tuple[list, Status]: 列情報のリストとステータス
+    """
+    try:
+        debug_print("\n=== D1以降の列データ取得開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("実績確報値ファイルが存在しません", True)
+            return [], Status.NOT_EXISTS
+
+        # データ読み込み（文字列として読み込み）
+        debug_print(f"ファイル読み込み: {file_path}")
+        df = pd.read_excel(file_path, header=None, dtype=str)
+
+        # D列以降の1行目データを取得
+        column_data = []
+        first_row = df.iloc[0, 3:]  # D列（index=3）以降
+
+        debug_print("\n【D1以降の列データ】")
+        for col_idx, value in enumerate(first_row, start=4):
+            col_letter = chr(ord("A") + col_idx - 1)
+            cleaned_value = str(value).strip()
+
+            if cleaned_value and cleaned_value.lower() != "nan":
+                column_info = {
+                    "column": col_letter,
+                    "name": cleaned_value,
+                    "index": col_idx,
+                }
+                column_data.append(column_info)
+                debug_print(
+                    f"列{col_letter}: [{cleaned_value}] "
+                    f"(文字数: {len(cleaned_value)}文字)",
+                    indent_level=1,
+                )
+
+        debug_print(f"\n取得した列数: {len(column_data)}件")
+        return column_data, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"列データ取得エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return [], Status.SYSTEM_ERROR
+
+
+def compare_equipment_names(torico_df: pd.DataFrame, d1_columns: list) -> dict:
+    """
+    設備名を比較する関数
+    Args:
+        torico_df: TORICOデータフレーム
+        d1_columns: D1以降の列情報
+    Returns:
+        dict: 比較結果
+    """
+    try:
+        debug_print("\n=== 設備名比較開始 ===")
+
+        # H列から設備名を取得
+        h_column_values = torico_df.iloc[:, 7]  # H列
+        torico_names = []
+
+        for idx, value in enumerate(h_column_values):
+            cleaned_value = str(value).strip()
+            if cleaned_value and cleaned_value.lower() != "nan":
+                torico_names.append({"row": idx + 1, "name": cleaned_value})
+
+        # 設備名のセットを作成
+        torico_name_set = {item["name"] for item in torico_names}
+        d1_name_set = {item["name"] for item in d1_columns}
+
+        # 比較結果
+        comparison = {
+            "matched": [],  # 一致
+            "only_in_torico": [],  # TORICOのみ
+            "only_in_d1": [],  # D1のみ
+            "is_perfect_match": False,  # 完全一致フラグ
+        }
+
+        # 一致するもの
+        matched_names = torico_name_set & d1_name_set
+        for name in matched_names:
+            torico_info = [item for item in torico_names if item["name"] == name]
+            d1_info = [item for item in d1_columns if item["name"] == name]
+            comparison["matched"].append(
+                {
+                    "name": name,
+                    "torico_rows": [item["row"] for item in torico_info],
+                    "d1_columns": [item["column"] for item in d1_info],
+                }
+            )
+
+        # TORICOのみ
+        only_torico = torico_name_set - d1_name_set
+        for name in only_torico:
+            info = [item for item in torico_names if item["name"] == name]
+            comparison["only_in_torico"].append(
+                {"name": name, "rows": [item["row"] for item in info]}
+            )
+
+        # D1のみ
+        only_d1 = d1_name_set - torico_name_set
+        for name in only_d1:
+            info = [item for item in d1_columns if item["name"] == name]
+            comparison["only_in_d1"].append(
+                {"name": name, "columns": [item["column"] for item in info]}
+            )
+
+        # 完全一致判定
+        comparison["is_perfect_match"] = len(only_torico) == 0 and len(only_d1) == 0
+
+        # 結果出力
+        debug_print("\n【比較結果】")
+        debug_print(f"一致: {len(comparison['matched'])}件")
+        debug_print(f"TORICOのみ: {len(comparison['only_in_torico'])}件")
+        debug_print(f"D1のみ: {len(comparison['only_in_d1'])}件")
+
+        return comparison
+
+    except Exception as e:
+        debug_print(f"比較エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None
+
+
+def main():
+    """メイン処理"""
+    try:
+        # ファイルパスの設定
+        torico_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+        jisseki_path = r"C:\Users\yukik\Desktop\ex\main_input\[B]実績確報値データ.xlsx"
+
+        # TORICOデータの処理
+        debug_print("\n【Step 1: TORICOデータ処理】")
+        torico_df, status = load_and_filter_torico(torico_path)
+        if status != Status.NORMAL:
+            debug_print("TORICOデータ処理に失敗しました", True)
+            return status
+
+        # D1列データの取得
+        debug_print("\n【Step 2: D1列データ取得】")
+        d1_columns, status = get_d1_column_names(jisseki_path)
+        if status != Status.NORMAL:
+            debug_print("D1列データ取得に失敗しました", True)
+            return status
+
+        # 設備名の比較
+        debug_print("\n【Step 3: 設備名比較】")
+        comparison = compare_equipment_names(torico_df, d1_columns)
+        if comparison is None:
+            debug_print("設備名比較に失敗しました", True)
+            return Status.SYSTEM_ERROR
+
+        # 結果出力
+        debug_print("\n====== 処理結果 ======")
+        if comparison["is_perfect_match"]:
+            debug_print("✅ 全ての設備名が一致しています")
+        else:
+            debug_print("⚠️ 設備名の不一致があります", True)
+
+            if comparison["only_in_torico"]:
+                debug_print("\n■ TORICOのみに存在する設備名:", True)
+                for item in comparison["only_in_torico"]:
+                    debug_print(f"- {item['name']} (行: {item['rows']})", True)
+
+            if comparison["only_in_d1"]:
+                debug_print("\n■ D1のみに存在する設備名:", True)
+                for item in comparison["only_in_d1"]:
+                    debug_print(f"- {item['name']} (列: {item['columns']})", True)
+
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"実行エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.SYSTEM_ERROR
+
+
+if __name__ == "__main__":
+    try:
+        status = main()
+        exit_code = 1 if status == Status.SYSTEM_ERROR else 0
+        debug_print(f"\n終了コード: {exit_code}")
+        exit(exit_code)
+    except Exception as e:
+        debug_print(f"クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        exit(1)
+# CK005_0224_関数にしてD1と設備名取得※TORICOフィルタリングしたもので比較するテストOK：PROOK＿17：12
