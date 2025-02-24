@@ -1,0 +1,366 @@
+# ファイル名: ck005_modified.py
+
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    ALL_EXISTS = 0
+    NORMAL = 1
+    NOT_EXISTS = 2
+    SYSTEM_ERROR = 9
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+def load_and_filter_torico(file_path: str) -> tuple[pd.DataFrame, Status]:
+    """TORICOデータを読み込みフィルタリング"""
+    try:
+        debug_print("\n=== TORICOデータ読み込み・フィルタリング開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("TORICOファイルが存在しません", True)
+            return None, Status.NOT_EXISTS
+
+        df = pd.read_excel(file_path, dtype=str)
+        debug_print(f"読み込み完了: {len(df)}行")
+
+        if "TORICO" not in df.columns:
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+
+        filtered_df = df[df["TORICO"].notna() & (df["TORICO"].str.strip() != "")].copy()
+
+        debug_print(f"フィルタ後: {len(filtered_df)}行")
+
+        return filtered_df, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"TORICO処理エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None, Status.SYSTEM_ERROR
+
+
+def get_d1_column_names(file_path: str) -> tuple[list, Status]:
+    """実績確報値のD1以降の列名を取得"""
+    try:
+        debug_print("\n=== D1以降の列データ取得開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("実績確報値ファイルが存在しません", True)
+            return [], Status.NOT_EXISTS
+
+        df = pd.read_excel(file_path, header=None, dtype=str)
+
+        column_data = []
+        first_row = df.iloc[0, 3:]
+
+        for col_idx, value in enumerate(first_row, start=4):
+            col_letter = chr(ord("A") + col_idx - 1)
+            cleaned_value = str(value).strip()
+
+            if cleaned_value and cleaned_value.lower() != "nan":
+                column_data.append(
+                    {"column": col_letter, "name": cleaned_value, "index": col_idx}
+                )
+
+        debug_print(f"取得した列数: {len(column_data)}件")
+        return column_data, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"列データ取得エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return [], Status.SYSTEM_ERROR
+
+
+def compare_equipment_names(
+    torico_df: pd.DataFrame, d1_columns: list
+) -> tuple[dict, pd.DataFrame]:
+    """設備名を比較し、一致した設備名の行を抽出"""
+    try:
+        debug_print("\n=== 設備名比較開始 ===")
+
+        h_column_values = torico_df.iloc[:, 7]
+        torico_names = [
+            {"row": idx + 1, "name": str(value).strip()}
+            for idx, value in enumerate(h_column_values)
+            if str(value).strip() and str(value).lower() != "nan"
+        ]
+
+        torico_name_set = {item["name"] for item in torico_names}
+        d1_name_set = {item["name"] for item in d1_columns}
+
+        matched_names = torico_name_set & d1_name_set
+
+        matched_df = torico_df[torico_df.iloc[:, 7].isin(matched_names)].copy()
+
+        debug_print(f"一致設備数: {len(matched_names)}件")
+        debug_print(f"一致する行数: {len(matched_df)}行")
+
+        return {"matched": list(matched_names)}, matched_df
+
+    except Exception as e:
+        debug_print(f"比較エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None, pd.DataFrame()
+
+
+def save_matched_data(df: pd.DataFrame, output_path: str) -> None:
+    """一致したデータをExcelに保存"""
+    try:
+        debug_print("\n=== Excelデータ保存 ===")
+
+        if df.empty:
+            debug_print("保存対象データがありません", True)
+            return
+
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        df.to_excel(output_path, index=False)
+        debug_print(f"Excel保存完了: {output_path}")
+
+    except Exception as e:
+        debug_print(f"Excel保存エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+
+
+def main():
+    """メイン処理"""
+    try:
+        torico_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+        jisseki_path = r"C:\Users\yukik\Desktop\ex\main_input\[B]実績確報値データ.xlsx"
+        output_path = r"C:\Users\yukik\Desktop\ex\0224\output\matched_equipment.xlsx"
+
+        debug_print("\n【Step 1: TORICOデータ処理】")
+        torico_df, status = load_and_filter_torico(torico_path)
+        if status != Status.NORMAL:
+            return status
+
+        debug_print("\n【Step 2: D1列データ取得】")
+        d1_columns, status = get_d1_column_names(jisseki_path)
+        if status != Status.NORMAL:
+            return status
+
+        debug_print("\n【Step 3: 設備名比較】")
+        comparison, matched_df = compare_equipment_names(torico_df, d1_columns)
+
+        debug_print("\n【Step 4: 一致データ保存】")
+        save_matched_data(matched_df, output_path)
+
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"実行エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.SYSTEM_ERROR
+
+
+if __name__ == "__main__":
+    try:
+        status = main()
+        exit_code = 1 if status == Status.SYSTEM_ERROR else 0
+        debug_print(f"\n終了コード: {exit_code}")
+        exit(exit_code)
+    except Exception as e:
+        debug_print(f"クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        exit(1)
+
+
+# output_練習DEV
+# ファイル名: ck005_modified.py
+
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    ALL_EXISTS = 0
+    NORMAL = 1
+    NOT_EXISTS = 2
+    SYSTEM_ERROR = 9
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+def load_and_filter_torico(file_path: str) -> tuple[pd.DataFrame, Status]:
+    """TORICOデータを読み込みフィルタリング"""
+    try:
+        debug_print("\n=== TORICOデータ読み込み・フィルタリング開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("TORICOファイルが存在しません", True)
+            return None, Status.NOT_EXISTS
+
+        df = pd.read_excel(file_path, dtype=str)
+        debug_print(f"読み込み完了: {len(df)}行")
+
+        if "TORICO" not in df.columns:
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+
+        filtered_df = df[df["TORICO"].notna() & (df["TORICO"].str.strip() != "")].copy()
+
+        debug_print(f"フィルタ後: {len(filtered_df)}行")
+
+        return filtered_df, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"TORICO処理エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None, Status.SYSTEM_ERROR
+
+
+def get_d1_column_names(file_path: str) -> tuple[list, Status]:
+    """実績確報値のD1以降の列名を取得"""
+    try:
+        debug_print("\n=== D1以降の列データ取得開始 ===")
+
+        if not Path(file_path).exists():
+            debug_print("実績確報値ファイルが存在しません", True)
+            return [], Status.NOT_EXISTS
+
+        df = pd.read_excel(file_path, header=None, dtype=str)
+
+        column_data = []
+        first_row = df.iloc[0, 3:]
+
+        for col_idx, value in enumerate(first_row, start=4):
+            col_letter = chr(ord("A") + col_idx - 1)
+            cleaned_value = str(value).strip()
+
+            if cleaned_value and cleaned_value.lower() != "nan":
+                column_data.append(
+                    {"column": col_letter, "name": cleaned_value, "index": col_idx}
+                )
+
+        debug_print(f"取得した列数: {len(column_data)}件")
+        return column_data, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"列データ取得エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return [], Status.SYSTEM_ERROR
+
+
+def compare_equipment_names(
+    torico_df: pd.DataFrame, d1_columns: list
+) -> tuple[dict, pd.DataFrame]:
+    """設備名を比較し、一致した設備名の行を抽出"""
+    try:
+        debug_print("\n=== 設備名比較開始 ===")
+
+        h_column_values = torico_df.iloc[:, 7]
+        torico_names = [
+            {"row": idx + 1, "name": str(value).strip()}
+            for idx, value in enumerate(h_column_values)
+            if str(value).strip() and str(value).lower() != "nan"
+        ]
+
+        torico_name_set = {item["name"] for item in torico_names}
+        d1_name_set = {item["name"] for item in d1_columns}
+
+        matched_names = torico_name_set & d1_name_set
+
+        matched_df = torico_df[torico_df.iloc[:, 7].isin(matched_names)].copy()
+
+        debug_print(f"一致設備数: {len(matched_names)}件")
+        debug_print(f"一致する行数: {len(matched_df)}行")
+
+        return {"matched": list(matched_names)}, matched_df
+
+    except Exception as e:
+        debug_print(f"比較エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return None, pd.DataFrame()
+
+
+def save_matched_data(df: pd.DataFrame, output_path: str) -> None:
+    """一致したデータをExcelに保存"""
+    try:
+        debug_print("\n=== Excelデータ保存 ===")
+
+        if df.empty:
+            debug_print("保存対象データがありません", True)
+            return
+
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        df.to_excel(output_path, index=False)
+        debug_print(f"Excel保存完了: {output_path}")
+
+    except Exception as e:
+        debug_print(f"Excel保存エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+
+
+def main():
+    """メイン処理"""
+    try:
+        torico_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+        jisseki_path = r"C:\Users\yukik\Desktop\ex\main_input\[B]実績確報値データ.xlsx"
+        output_path = r"C:\Users\yukik\Desktop\ex\0224\output\matched_equipment.xlsx"
+
+        debug_print("\n【Step 1: TORICOデータ処理】")
+        torico_df, status = load_and_filter_torico(torico_path)
+        if status != Status.NORMAL:
+            return status
+
+        debug_print("\n【Step 2: D1列データ取得】")
+        d1_columns, status = get_d1_column_names(jisseki_path)
+        if status != Status.NORMAL:
+            return status
+
+        debug_print("\n【Step 3: 設備名比較】")
+        comparison, matched_df = compare_equipment_names(torico_df, d1_columns)
+
+        debug_print("\n【Step 4: 一致データ保存】")
+        save_matched_data(matched_df, output_path)
+
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"実行エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.SYSTEM_ERROR
+
+
+if __name__ == "__main__":
+    try:
+        status = main()
+        exit_code = 1 if status == Status.SYSTEM_ERROR else 0
+        debug_print(f"\n終了コード: {exit_code}")
+        exit(exit_code)
+    except Exception as e:
+        debug_print(f"クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        exit(1)
+
+
+# output_練習DEV
