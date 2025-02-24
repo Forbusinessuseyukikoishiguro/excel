@@ -1,0 +1,116 @@
+# ファイル名: detailed_equipment_check.py
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+# グローバル変数の定義
+class GlobalData:
+    """グローバルデータを管理するクラス"""
+    torico_filtered_data = None
+    instance = None
+
+    @classmethod
+    def get_instance(cls):
+        """シングルトンインスタンスを取得"""
+        if cls.instance is None:
+            cls.instance = GlobalData()
+        return cls.instance
+
+    def set_filtered_data(self, data):
+        """フィルタリングされたデータを設定"""
+        self.torico_filtered_data = data
+
+    def get_filtered_data(self):
+        """フィルタリングされたデータを取得"""
+        return self.torico_filtered_data
+
+# ステータスコード定義（既存のまま）
+class Status(IntEnum):
+    """ステータスコード定義"""
+    ALL_EXISTS = 0
+    NORMAL = 1
+    NOT_EXISTS = 2
+    SYSTEM_ERROR = 9
+
+def debug_print(message: str, is_error: bool = False) -> None:
+    """デバッグログ出力関数（既存のまま）"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {prefix} {message}")
+
+class DetailedEquipmentChecker:
+    """設備名の詳細チェッククラス"""
+
+    def __init__(self, torico_path: str, jisseki_path: str):
+        self.torico_path = Path(torico_path)
+        self.jisseki_path = Path(jisseki_path)
+        self.torico_df = None
+        self.filtered_df = None
+        self.global_data = GlobalData.get_instance()
+
+    def load_torico_data(self) -> Status:
+        """TORICOデータの読み込みと詳細表示"""
+        try:
+            debug_print("\n=== TORICOデータ詳細分析開始 ===")
+
+            if not self.torico_path.exists():
+                debug_print("TORICOファイルが存在しません", True)
+                return Status.NOT_EXISTS
+
+            # データ読み込み
+            self.torico_df = pd.read_excel(self.torico_path)
+            debug_print(f"データ読み込み完了: {len(self.torico_df)}行")
+
+            # 列情報の表示
+            debug_print("\n【TORICOデータフレーム構造】")
+            debug_print(f"列一覧: {', '.join(self.torico_df.columns)}")
+
+            # TORICO列チェック
+            if "TORICO" not in self.torico_df.columns:
+                debug_print("TORICO列が存在しません", True)
+                return Status.SYSTEM_ERROR
+
+            # データフィルタリング
+            self.filtered_df = self.torico_df[self.torico_df["TORICO"].notna()].copy()
+            
+            # フィルタリングされたデータをグローバルに設定
+            self.global_data.set_filtered_data(self.filtered_df)
+            
+            debug_print(f"\n【フィルタリング結果】")
+            debug_print(f"元データ行数: {len(self.torico_df)}行")
+            debug_print(f"フィルタ後行数: {len(self.filtered_df)}行")
+            debug_print(f"除外された行数: {len(self.torico_df) - len(self.filtered_df)}行")
+
+            # 設備名データの詳細表示
+            debug_print("\n【設備名データ詳細】")
+            for idx, row in self.filtered_df.iterrows():
+                debug_print(f"行{idx + 1}: TORICO={row['TORICO']}, 設備名={row['設備名']}")
+
+            return Status.NORMAL
+
+        except Exception as e:
+            debug_print(f"TORICOデータ読み込みエラー: {str(e)}", True)
+            debug_print(traceback.format_exc(), True)
+            return Status.SYSTEM_ERROR
+
+# フィルタリングされたデータを取得する関数
+def get_filtered_torico_data():
+    """グローバルに保存されているフィルタリング済みTORICOデータを取得"""
+    global_data = GlobalData.get_instance()
+    return global_data.get_filtered_data()
+
+# 使用例
+def example_usage():
+    """フィルタリングされたデータの使用例"""
+    filtered_data = get_filtered_torico_data()
+    if filtered_data is not None:
+        print("フィルタリングされたデータの行数:", len(filtered_data))
+        # データの処理...
+    else:
+        print("フィルタリングされたデータがまだ設定されていません")
+
+# メイン処理（既存の関数は変更なし）
