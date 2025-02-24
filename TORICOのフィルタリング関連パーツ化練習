@@ -1,0 +1,238 @@
+# ファイル名: torico_functions.py
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    NORMAL = 0
+    ERROR = 1
+    NOT_FOUND = 2
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+# ==================== データ操作系関数 ====================
+
+
+def load_torico_file(file_path: str) -> tuple[pd.DataFrame, Status]:
+    """
+    TORICOファイルを読み込む
+
+    Args:
+        file_path: ファイルパス
+    Returns:
+        (DataFrame, Status): 読み込んだデータとステータス
+    """
+    try:
+        if not Path(file_path).exists():
+            debug_print(f"ファイルが存在しません: {file_path}", True)
+            return None, Status.NOT_FOUND
+
+        df = pd.read_excel(file_path)
+        debug_print(f"ファイル読み込み完了: {len(df)}行")
+        return df, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"ファイル読み込みエラー: {str(e)}", True)
+        return None, Status.ERROR
+
+
+def filter_torico_data(df: pd.DataFrame) -> tuple[pd.DataFrame, Status]:
+    """
+    TORICOデータをフィルタリング
+
+    Args:
+        df: 元のデータフレーム
+    Returns:
+        (DataFrame, Status): フィルタリング済みデータとステータス
+    """
+    try:
+        if "TORICO" not in df.columns:
+            debug_print("TORICO列が存在しません", True)
+            return None, Status.ERROR
+
+        filtered_df = df[df["TORICO"].notna()].copy()
+        debug_print(f"フィルタリング完了: {len(filtered_df)}行")
+        return filtered_df, Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"フィルタリングエラー: {str(e)}", True)
+        return None, Status.ERROR
+
+
+# ==================== データ取得系関数 ====================
+
+
+def get_equipment_names(df: pd.DataFrame) -> list:
+    """
+    設備名一覧を取得
+
+    Args:
+        df: データフレーム
+    Returns:
+        list: 設備名リスト
+    """
+    try:
+        if df is None or "設備名" not in df.columns:
+            return []
+        names = df["設備名"].unique().tolist()
+        debug_print(f"設備名取得: {len(names)}件")
+        return names
+    except Exception as e:
+        debug_print(f"設備名取得エラー: {str(e)}", True)
+        return []
+
+
+def get_torico_info(df: pd.DataFrame) -> dict:
+    """
+    TORICO情報を取得
+
+    Args:
+        df: データフレーム
+    Returns:
+        dict: TORICO情報の辞書
+    """
+    try:
+        if df is None or "TORICO" not in df.columns:
+            return {}
+
+        info = {
+            "count": len(df),
+            "unique_count": df["TORICO"].nunique(),
+            "values": df["TORICO"].value_counts().to_dict(),
+        }
+        debug_print(f"TORICO情報取得: {info['count']}件")
+        return info
+    except Exception as e:
+        debug_print(f"TORICO情報取得エラー: {str(e)}", True)
+        return {}
+
+
+# ==================== データ検証系関数 ====================
+
+
+def validate_torico_data(df: pd.DataFrame) -> tuple[bool, list]:
+    """
+    TORICOデータのバリデーション
+
+    Args:
+        df: データフレーム
+    Returns:
+        (bool, list): 検証結果と問題リスト
+    """
+    issues = []
+    try:
+        # 必須列の確認
+        required_columns = ["TORICO", "設備名"]
+        for col in required_columns:
+            if col not in df.columns:
+                issues.append(f"必須列がありません: {col}")
+
+        # NULL値チェック
+        for col in df.columns:
+            null_count = df[col].isnull().sum()
+            if null_count > 0:
+                issues.append(f"{col}: {null_count}件のNULL値があります")
+
+        # 重複チェック
+        dupes = df.duplicated().sum()
+        if dupes > 0:
+            issues.append(f"重複データが{dupes}件あります")
+
+        is_valid = len(issues) == 0
+        return is_valid, issues
+
+    except Exception as e:
+        debug_print(f"バリデーションエラー: {str(e)}", True)
+        issues.append(f"バリデーションエラー: {str(e)}")
+        return False, issues
+
+
+# ==================== ユーティリティ関数 ====================
+
+
+def get_data_summary(df: pd.DataFrame) -> dict:
+    """
+    データの要約を取得
+
+    Args:
+        df: データフレーム
+    Returns:
+        dict: データ要約の辞書
+    """
+    try:
+        if df is None:
+            return {}
+
+        summary = {
+            "total_rows": len(df),
+            "columns": list(df.columns),
+            "dtypes": df.dtypes.to_dict(),
+            "null_counts": df.isnull().sum().to_dict(),
+        }
+        return summary
+    except Exception as e:
+        debug_print(f"サマリー取得エラー: {str(e)}", True)
+        return {}
+
+
+# ==================== 使用例 ====================
+
+
+def example_usage():
+    """使用例を示す関数"""
+    try:
+        file_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+
+        # データ読み込み
+        df, status = load_torico_file(file_path)
+        if status != Status.NORMAL:
+            return status
+
+        # フィルタリング
+        filtered_df, status = filter_torico_data(df)
+        if status != Status.NORMAL:
+            return status
+
+        # 設備名取得
+        equipment_names = get_equipment_names(filtered_df)
+        debug_print(f"設備名一覧: {equipment_names}")
+
+        # TORICO情報取得
+        torico_info = get_torico_info(filtered_df)
+        debug_print(f"TORICO情報: {torico_info}")
+
+        # バリデーション
+        is_valid, issues = validate_torico_data(filtered_df)
+        if not is_valid:
+            debug_print("データに問題があります:", True)
+            for issue in issues:
+                debug_print(f"- {issue}", True, 1)
+
+        # サマリー取得
+        summary = get_data_summary(filtered_df)
+        debug_print(f"データサマリー: {summary}")
+
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"実行エラー: {str(e)}", True)
+        return Status.ERROR
+
+
+if __name__ == "__main__":
+    status = example_usage()
+    exit(0 if status == Status.NORMAL else 1)
