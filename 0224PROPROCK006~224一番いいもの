@@ -1,0 +1,423 @@
+# [1] 必要なライブラリのインポート
+import pandas as pd
+import numpy as np
+from openpyxl import load_workbook
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import traceback
+import sys
+from typing import List, Dict, Any, Optional, Tuple
+
+
+
+
+# [2] ステータスコード定義
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+
+    NORMAL = 0  # 正常
+    WARNING = 1  # 警告
+    USER_ERROR = 2  # ユーザーエラー
+    SYSTEM_ERROR = 9  # システムエラー
+
+
+
+
+# [3] メールアドレス検証クラス
+class EmailValidator:
+    """メールアドレス検証クラス"""
+
+
+    def __init__(self):
+        self.format_errors: List[str] = []
+        self.count_errors: List[str] = []
+        self.torico_errors: List[str] = []
+
+
+    def validate_email_format(self, email: str) -> bool:
+        """メールアドレスの形式を検証"""
+        if not isinstance(email, str):
+            return False
+        email = email.strip()
+        if len(email) < 3:
+            return False
+        if "@" not in email:
+            return False
+        at_position = email.index("@")
+        return at_position > 0 and at_position < len(email) - 1
+
+
+    def count_email_addresses(self, value: str) -> List[str]:
+        """カンマ区切りのメールアドレスを分割してカウント"""
+        if not isinstance(value, str):
+            return []
+        addresses = [addr.strip() for addr in value.split(",") if addr and addr.strip()]
+        return addresses
+
+
+
+
+# [4] デバッグ出力関数
+def debug_print(message: str, is_error: bool = False) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {prefix} {message}")
+
+
+
+
+# [5] TORICOデータ処理クラス
+class ToricoProcessor:
+    """TORICOデータ処理クラス"""
+
+
+    def __init__(self, file_path: str, sheet_name: str):
+        self.file_path = Path(file_path)
+        self.sheet_name = sheet_name
+        self.df: Optional[pd.DataFrame] = None
+        self.filtered_df: Optional[pd.DataFrame] = None
+        self.email_validator = EmailValidator()
+        debug_print(f"初期化: {file_path}, シート: {sheet_name}")
+
+
+    # [5-1] メイン処理フロー（実行順序変更）
+    def process_data(self) -> Status:
+        """メイン処理：4つのチェックを順番に実行"""
+        try:
+            checks: List[Tuple[str, callable]] = [
+                ("①TORICOフィルタリング - TORICO列の抽出", self._filter_torico),
+                ("②必須項目の空欄チェック", self._check_empty_cells),
+                ("③メールアドレス形式・型チェック", self._check_data_types),
+                ("④メールアドレス件数チェック", self._check_email_addresses),
+            ]
+
+
+            for check_name, check_func in checks:
+                debug_print(f"\n=== {check_name}開始 ===")
+                result = check_func()
+                if result != Status.NORMAL:
+                    debug_print(f"{check_name}でエラーが発生しました", True)
+                    return result
+
+
+            debug_print("\n✅ 全ての処理が正常に完了しました")
+            return Status.NORMAL
+
+
+        except Exception as e:
+            debug_print(f"処理エラー: {str(e)}", True)
+            debug_print(f"スタックトレース:\n{traceback.format_exc()}", True)
+            return Status.SYSTEM_ERROR
+
+
+    # [5-2] ①TORICOフィルタリング処理
+    def _filter_torico(self) -> Status:
+        """TORICOフィルタリング処理"""
+        try:
+            if not self.file_path.exists():
+                debug_print(f"ファイルが存在しません: {self.file_path}", True)
+                return Status.USER_ERROR
+
+
+            self.df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
+            debug_print(f"データ読み込み完了: {len(self.df)}行")
+
+
+            if "TORICO" not in self.df.columns:
+                debug_print("TORICO列が存在しません", True)
+                return Status.USER_ERROR
+
+
+            self.filtered_df = self.df[self.df["TORICO"].notna()].copy()
+            debug_print(f"フィルタリング後のデータ: {len(self.filtered_df)}行")
+
+
+            return Status.NORMAL
+
+
+        except Exception as e:
+            debug_print(f"フィルタリングエラー: {str(e)}", True)
+            return Status.SYSTEM_ERROR
+
+
+    # [5-3] ②空欄チェック処理
+    def _check_empty_cells(self) -> Status:
+        """必須項目の空欄チェック"""
+        try:
+            empty_cells = []
+
+
+            for column in self.filtered_df.columns:
+                if column in ["CC", "BCC"]:
+                    continue
+                if column == "TO":
+                    continue
+
+
+                for idx, value in enumerate(self.filtered_df[column], start=2):
+                    if pd.isna(value) or str(value).strip() == "":
+                        empty_cells.append(f"行{idx}, 列[{column}]が空欄")
+
+
+            if empty_cells:
+                debug_print("空欄エラー:", True)
+                for error in empty_cells:
+                    debug_print(f"- {error}", True)
+                return Status.USER_ERROR
+
+
+            debug_print("空欄チェック完了 - 問題なし")
+            return Status.NORMAL
+
+
+        except Exception as e:
+            debug_print(f"空欄チェックエラー: {str(e)}", True)
+            return Status.SYSTEM_ERROR
+
+
+    # [5-4] ③メールアドレス形式・型チェック
+    def _check_data_types(self) -> Status:
+        """データ型とメールアドレス形式のチェック"""
+        try:
+            # 一般的な列の型チェック
+            column_types = {
+                "TORICO": (str, float, int),
+                "インボイス社名": (str,),
+                "販売価格": (float, int),
+                "買取金額": (float, int),
+                "エリア": (str,),
+                "受電地点特定番号": (float, int),
+                "設備名": (str,),
+                "所在地": (str,),
+                "容量": (str, float, int),
+                "受電開始日": (pd.Timestamp,),
+            }
+
+
+            type_errors = []
+            for column, expected_types in column_types.items():
+                if column not in self.filtered_df.columns:
+                    continue
+
+
+                for idx, value in enumerate(self.filtered_df[column], start=2):
+                    if pd.isna(value):
+                        continue
+
+
+                    if isinstance(value, (np.integer, np.floating)):
+                        value = value.item()
+
+
+                    if not isinstance(value, expected_types):
+                        actual_type = type(value).__name__
+                        expected_types_str = ", ".join(
+                            t.__name__ for t in expected_types
+                        )
+                        type_errors.append(
+                            f"行{idx}, 列[{column}]: 型エラー (期待: {expected_types_str}, 実際: {actual_type})"
+                        )
+
+
+            # メールアドレス形式チェック
+            email_columns = ["TO", "CC", "BCC"]
+            for column in email_columns:
+                if column not in self.filtered_df.columns:
+                    continue
+
+
+                for idx, value in enumerate(self.filtered_df[column], start=2):
+                    if pd.isna(value):
+                        continue
+
+
+                    addresses = self.email_validator.count_email_addresses(str(value))
+                    for addr in addresses:
+                        if not self.email_validator.validate_email_format(addr):
+                            self.email_validator.format_errors.append(
+                                f"行{idx}, 列[{column}]: メールアドレス形式エラー ({addr})"
+                            )
+
+
+            # エラー報告
+            if type_errors or self.email_validator.format_errors:
+                debug_print("型チェックエラー:", True)
+                for error in type_errors:
+                    debug_print(f"- {error}", True)
+                for error in self.email_validator.format_errors:
+                    debug_print(f"- {error}", True)
+                return Status.USER_ERROR
+
+
+            debug_print("型・形式チェック完了 - 問題なし")
+            return Status.NORMAL
+
+
+        except Exception as e:
+            debug_print(f"型チェックエラー: {str(e)}", True)
+            return Status.SYSTEM_ERROR
+
+
+    # [5-5] ④メールアドレス件数チェック
+    def _check_email_addresses(self) -> Status:
+        """メールアドレスの件数チェック"""
+        try:
+            # メールアドレス件数チェック
+            for column in ["TO", "CC", "BCC"]:
+                if column not in self.filtered_df.columns:
+                    continue
+
+
+                for idx, value in enumerate(self.filtered_df[column], start=2):
+                    if pd.isna(value):
+                        continue
+
+
+                    addresses = self.email_validator.count_email_addresses(str(value))
+                    email_count = len(addresses)
+                    debug_print(
+                        f"行{idx}, 列[{column}]: {email_count}件のメールアドレス"
+                    )
+
+
+                    if email_count > 5:
+                        error_msg = f"行{idx}, 列[{column}]: メールアドレスが6件を超過 ({email_count}件)"
+                        self.email_validator.count_errors.append(error_msg)
+                        debug_print(error_msg, True)
+
+
+            # TORICO値に基づくTO列の有効性チェック
+            torico_groups: Dict[Any, List[Dict[str, Any]]] = {}
+            for idx, row in self.filtered_df.iterrows():
+                torico_value = row["TORICO"]
+                if pd.isna(torico_value):
+                    continue
+
+
+                if torico_value not in torico_groups:
+                    torico_groups[torico_value] = []
+
+
+                to_value = row.get("TO", "")
+                if not pd.isna(to_value):
+                    torico_groups[torico_value].append(
+                        {"row": idx + 2, "value": to_value}
+                    )
+
+
+            # TORICOグループごとのチェック
+            for torico_value, entries in torico_groups.items():
+                debug_print(f"\nTORICO値 [{torico_value}] のチェック:")
+
+
+                valid_email_found = False
+                for entry in entries:
+                    if isinstance(entry["value"], str):
+                        addresses = self.email_validator.count_email_addresses(
+                            entry["value"]
+                        )
+                        if any(
+                            self.email_validator.validate_email_format(addr)
+                            for addr in addresses
+                        ):
+                            valid_email_found = True
+                            debug_print(f"有効なメールアドレスを発見: 行{entry['row']}")
+                            break
+
+
+                if not valid_email_found:
+                    error_msg = f"TORICO値 [{torico_value}] に対する有効なメールアドレスが存在しません"
+                    self.email_validator.torico_errors.append(error_msg)
+                    debug_print(error_msg, True)
+                    rows = [str(entry["row"]) for entry in entries]
+                    debug_print(f"対象行: {', '.join(rows)}")
+
+
+            # エラーの集計と表示
+            if self.email_validator.count_errors or self.email_validator.torico_errors:
+                return Status.USER_ERROR
+
+
+            debug_print("メールアドレスチェック完了 - 問題なし")
+            return Status.NORMAL
+
+
+        except Exception as e:
+            debug_print(f"メールアドレスチェックエラー: {str(e)}", True)
+            return Status.SYSTEM_ERROR
+
+
+
+
+# [6] ファイル処理関数
+def process_excel_file(file_path: str, sheet_name: str) -> Status:
+    """Excelファイル処理のメイン関数"""
+    try:
+        debug_print("\n=== Excel処理開始 ===")
+        processor = ToricoProcessor(file_path, sheet_name)
+        return processor.process_data()
+    except Exception as e:
+        debug_print(f"Excel処理エラー: {str(e)}", True)
+        debug_print(f"スタックトレース:\n{traceback.format_exc()}", True)
+        return Status.SYSTEM_ERROR
+
+
+
+
+# [7] メイン実行部分
+def main():
+    """メイン処理"""
+    try:
+        file_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+        sheet_name = "correct"
+
+
+        debug_print("=== 処理開始 ===")
+        debug_print(f"ファイルパス: {file_path}")
+        debug_print(f"シート名: {sheet_name}")
+
+
+        if not Path(file_path).exists():
+            debug_print(f"ファイルが存在しません: {file_path}", True)
+            return Status.USER_ERROR
+
+
+        status = process_excel_file(file_path, sheet_name)
+
+
+        if status == Status.NORMAL:
+            debug_print("\n✅ 全ての処理が正常に完了しました")
+        elif status == Status.SYSTEM_ERROR:
+            debug_print("\n❌ システムエラーが発生しました", True)
+        else:
+            debug_print("\n❌ 処理中にエラーが発生しました", True)
+
+
+        return status
+
+
+    except Exception as e:
+        error_msg = f"\n❌ 予期せぬエラーが発生しました: {str(e)}"
+        stack_trace = traceback.format_exc()
+        debug_print(error_msg, True)
+        debug_print("スタックトレース:", True)
+        debug_print(stack_trace, True)
+
+
+
+
+# [8] エントリーポイント
+if __name__ == "__main__":
+    try:
+        status = main()
+        sys.exit(1 if status != Status.NORMAL else 0)
+    except Exception as e:
+        debug_print(f"❌ クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        sys.exit(1)
+#2025_0224_1010:TORICOフィルタリングして、空欄チェックして、型とメールアドレス有効化かチェックして、メールアドレス件数確認：PROOK
+#CK006~2/24一番いいもの
+
