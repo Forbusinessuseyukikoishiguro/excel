@@ -1,0 +1,195 @@
+# ファイル名: global_torico_filter.py
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    NORMAL = 0  # 正常
+    ERROR = 1  # エラー
+    NOT_FOUND = 2  # データ未検出
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+class GlobalToricoData:
+    """グローバルTORICOデータ管理クラス"""
+
+    filtered_data = None  # フィルタリング済みデータを保持
+    last_update = None  # 最終更新日時
+
+    @classmethod
+    def set_data(cls, data: pd.DataFrame) -> None:
+        """
+        フィルタリング済みデータを保存
+        Args:
+            data: フィルタリング済みのデータフレーム
+        """
+        cls.filtered_data = data
+        cls.last_update = datetime.now()
+        debug_print(f"グローバルデータを更新: {len(data)}行")
+
+    @classmethod
+    def get_data(cls) -> pd.DataFrame:
+        """フィルタリング済みデータを取得"""
+        if cls.filtered_data is None:
+            debug_print("警告: データが未設定です", True)
+        return cls.filtered_data
+
+    @classmethod
+    def get_last_update(cls) -> datetime:
+        """最終更新日時を取得"""
+        return cls.last_update
+
+    @classmethod
+    def clear_data(cls) -> None:
+        """データをクリア"""
+        cls.filtered_data = None
+        cls.last_update = None
+        debug_print("グローバルデータをクリア")
+
+
+def filter_torico_data(file_path: str) -> Status:
+    """
+    TORICOデータのフィルタリング処理
+    Args:
+        file_path: TORICOファイルのパス
+    Returns:
+        Status: 処理結果のステータス
+    """
+    try:
+        debug_print("\n=== TORICOデータフィルタリング開始 ===")
+        debug_print(f"対象ファイル: {file_path}", indent_level=1)
+
+        # ファイル存在チェック
+        if not Path(file_path).exists():
+            debug_print("ファイルが存在しません", True, 1)
+            return Status.NOT_FOUND
+
+        # データ読み込み
+        debug_print("Excelファイル読み込み中...", indent_level=1)
+        df = pd.read_excel(file_path)
+        debug_print(f"読み込み完了: {len(df)}行", indent_level=1)
+
+        # 列情報の表示
+        debug_print("\n【データフレーム情報】", indent_level=1)
+        debug_print(f"列一覧: {', '.join(df.columns)}", indent_level=2)
+
+        # TORICO列の存在チェック
+        if "TORICO" not in df.columns:
+            debug_print("TORICO列が存在しません", True, 1)
+            return Status.ERROR
+
+        # フィルタリング処理
+        debug_print("\n【フィルタリング処理開始】", indent_level=1)
+        filtered_df = df[df["TORICO"].notna()].copy()
+
+        # フィルタリング結果の表示
+        filtered_count = len(filtered_df)
+        removed_count = len(df) - filtered_count
+
+        debug_print(f"元データ件数: {len(df)}件", indent_level=2)
+        debug_print(f"フィルタリング後: {filtered_count}件", indent_level=2)
+        debug_print(f"除外件数: {removed_count}件", indent_level=2)
+
+        # グローバルデータとして保存
+        GlobalToricoData.set_data(filtered_df)
+
+        # データの詳細表示
+        debug_print("\n【フィルタリング後のデータ詳細】", indent_level=1)
+        for idx, row in filtered_df.iterrows():
+            debug_print(
+                f"行{idx + 1}: TORICO={row['TORICO']}, 設備名={row['設備名']}",
+                indent_level=2,
+            )
+
+        debug_print("\n✅ フィルタリング処理完了")
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"フィルタリング処理エラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.ERROR
+
+
+def get_filtered_data() -> pd.DataFrame:
+    """フィルタリング済みデータを取得するユーティリティ関数"""
+    return GlobalToricoData.get_data()
+
+
+def get_equipment_names() -> list:
+    """設備名一覧を取得するユーティリティ関数"""
+    data = GlobalToricoData.get_data()
+    if data is None:
+        return []
+    names = data["設備名"].unique().tolist()
+    debug_print(f"\n【設備名一覧取得】({len(names)}件)")
+    for name in names:
+        debug_print(f"- {name}", indent_level=1)
+    return names
+
+
+def main():
+    """動作確認用メイン処理"""
+    try:
+        debug_print("\n====== TORICOフィルタリング動作確認 ======")
+
+        # ファイルパスの設定
+        file_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+
+        # フィルタリング実行
+        debug_print("\n【Step 1: フィルタリング実行】")
+        status = filter_torico_data(file_path)
+
+        if status != Status.NORMAL:
+            debug_print("フィルタリング処理に失敗しました", True)
+            return status
+
+        # フィルタリング済みデータの取得
+        debug_print("\n【Step 2: フィルタリング済みデータの取得】")
+        filtered_data = get_filtered_data()
+        if filtered_data is not None:
+            debug_print(f"取得したデータ件数: {len(filtered_data)}件")
+
+        # 設備名一覧の取得
+        debug_print("\n【Step 3: 設備名一覧の取得】")
+        equipment_names = get_equipment_names()
+        debug_print(f"設備名の総数: {len(equipment_names)}件")
+
+        # 最終更新日時の確認
+        last_update = GlobalToricoData.get_last_update()
+        debug_print(f"\n最終更新日時: {last_update}")
+
+        debug_print("\n====== 動作確認完了 ======")
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"予期せぬエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.ERROR
+
+
+if __name__ == "__main__":
+    try:
+        status = main()
+        exit_code = 1 if status != Status.NORMAL else 0
+        debug_print(f"\n終了コード: {exit_code}")
+        exit(exit_code)
+    except Exception as e:
+        debug_print(f"クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        exit(1)
+        
+#CK005_D1と設備名確認＿グローバル変数処理OKPRO参考OK
