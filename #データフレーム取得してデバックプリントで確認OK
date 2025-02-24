@@ -1,0 +1,56 @@
+# ファイル名: torico_filter.py
+
+import pandas as pd
+from pathlib import Path
+
+
+def get_torico_data():
+    try:
+        # ファイルパスの設定
+        file_path = r"C:\Users\yukik\Desktop\ex\0223_class\katasample.xlsx"
+
+        print("\n=== TORICOデータ取得開始 ===")
+        print(f"対象ファイル: {file_path}")
+
+        # correctシートを読み込む
+        df = pd.read_excel(file_path, sheet_name="correct")
+        print(f"データ読み込み完了 - 元データ行数: {len(df)}行")
+
+        # TORICO列の確認（A列に存在する想定）
+        print("\n【データ分析】")
+        print(f"列一覧: {', '.join(df.columns)}")
+
+        # TORICO列でフィルタリング
+        filtered_df = df[df["TORICO"].notna()].copy()
+        print(f"\n【フィルタリング結果】")
+        print(f"- フィルタ後行数: {len(filtered_df)}行")
+        print(f"- 除外された行数: {len(df) - len(filtered_df)}行")
+
+        # データの詳細表示
+        print("\n【フィルタリング後のデータ】")
+        print("\nTORICO列の値:")
+        for idx, (index, row) in enumerate(filtered_df.iterrows(), 1):
+            print(f"行{idx}: TORICO={row['TORICO']}")
+
+        print("\n【データフレーム情報】")
+        print(filtered_df.info())
+
+        return filtered_df
+
+    except Exception as e:
+        print(f"\n❌ エラーが発生しました: {str(e)}")
+        return None
+
+
+if __name__ == "__main__":
+    filtered_df = get_torico_data()
+    if filtered_df is not None:
+        print("\n✅ 処理が完了しました")
+
+        # データフレームの最初の数行を表示
+        print("\n【データフレームの内容（先頭部分）】")
+        print(filtered_df.head())
+    else:
+        print("\n❌ 処理が失敗しました")
+
+#データフレーム取得してデバックプリントで確認OK
