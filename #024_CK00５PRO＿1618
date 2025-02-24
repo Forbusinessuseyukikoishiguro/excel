@@ -1,0 +1,165 @@
+# ファイル名: torico_data_manager.py
+
+import pandas as pd
+import traceback
+from enum import IntEnum
+from datetime import datetime
+from pathlib import Path
+import os
+
+
+class Status(IntEnum):
+    """ステータスコード定義"""
+
+    NORMAL = 0  # 正常
+    ERROR = 1  # エラー
+    NOT_FOUND = 2  # データ未検出
+
+
+def debug_print(message: str, is_error: bool = False, indent_level: int = 0) -> None:
+    """デバッグログ出力関数"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indent = "  " * indent_level
+    prefix = "❌" if is_error else "→"
+    print(f"[DEBUG {timestamp}] {indent}{prefix} {message}")
+
+
+class ToricoDataManager:
+    """TORICOデータ管理クラス"""
+
+    _instance = None  # シングルトンインスタンス
+    _filtered_data = None  # フィルタリング済みデータ
+
+    @classmethod
+    def get_instance(cls):
+        """シングルトンインスタンスを取得"""
+        if cls._instance is None:
+            debug_print("新規インスタンスを作成")
+            cls._instance = ToricoDataManager()
+        return cls._instance
+
+    def load_and_filter_data(self, file_path: str) -> Status:
+        """
+        TORICOデータを読み込みフィルタリング
+        Args:
+            file_path: TORICOファイルのパス
+        """
+        try:
+            debug_print("\n=== TORICOデータ読み込み開始 ===")
+            debug_print(f"対象ファイル: {file_path}", indent_level=1)
+
+            if not Path(file_path).exists():
+                debug_print("ファイルが存在しません", True, 1)
+                return Status.NOT_FOUND
+
+            # データ読み込み
+            debug_print("Excelファイル読み込み中...", indent_level=1)
+            df = pd.read_excel(file_path)
+            debug_print(f"読み込み完了: {len(df)}行", indent_level=1)
+
+            # 列情報の表示
+            debug_print("\n【データフレーム情報】", indent_level=1)
+            debug_print(f"列一覧: {', '.join(df.columns)}", indent_level=2)
+
+            # TORICO列の存在チェック
+            if "TORICO" not in df.columns:
+                debug_print("TORICO列が存在しません", True, 1)
+                return Status.ERROR
+
+            # フィルタリング処理
+            debug_print("\n【フィルタリング処理開始】", indent_level=1)
+            self._filtered_data = df[df["TORICO"].notna()].copy()
+
+            # フィルタリング結果の表示
+            filtered_count = len(self._filtered_data)
+            removed_count = len(df) - filtered_count
+
+            debug_print(f"元データ件数: {len(df)}件", indent_level=2)
+            debug_print(f"フィルタリング後: {filtered_count}件", indent_level=2)
+            debug_print(f"除外件数: {removed_count}件", indent_level=2)
+
+            # データの詳細表示
+            debug_print("\n【フィルタリング後のデータ詳細】", indent_level=1)
+            for idx, row in self._filtered_data.iterrows():
+                debug_print(
+                    f"行{idx + 1}: TORICO={row['TORICO']}, 設備名={row['設備名']}",
+                    indent_level=2,
+                )
+
+            debug_print("\n✅ フィルタリング処理完了")
+            return Status.NORMAL
+
+        except Exception as e:
+            debug_print(f"データ処理エラー: {str(e)}", True)
+            debug_print(traceback.format_exc(), True)
+            return Status.ERROR
+
+    def get_filtered_data(self):
+        """フィルタリング済みデータを取得"""
+        if self._filtered_data is None:
+            debug_print("警告: フィルタリング済みデータが未設定です", True)
+        return self._filtered_data
+
+    def get_equipment_names(self):
+        """設備名の一覧を取得"""
+        if self._filtered_data is None:
+            debug_print("警告: データが未設定です", True)
+            return []
+
+        names = self._filtered_data["設備名"].unique().tolist()
+        debug_print(f"\n【設備名一覧】({len(names)}件)")
+        for name in names:
+            debug_print(f"- {name}", indent_level=1)
+        return names
+
+
+def main():
+    """動作確認用メイン処理"""
+    try:
+        debug_print("\n====== TORICOデータマネージャー動作確認 ======")
+
+        # ファイルパスの設定
+        file_path = r"C:\Users\yukik\Desktop\ex\0224\katasample.xlsx"
+
+        # マネージャーの初期化
+        manager = ToricoDataManager.get_instance()
+
+        # データの読み込みとフィルタリング
+        debug_print("\n【Step 1: データ読み込みとフィルタリング】")
+        status = manager.load_and_filter_data(file_path)
+
+        if status != Status.NORMAL:
+            debug_print("データ処理に失敗しました", True)
+            return status
+
+        # フィルタリング済みデータの取得
+        debug_print("\n【Step 2: フィルタリング済みデータの取得】")
+        filtered_data = manager.get_filtered_data()
+        debug_print(f"取得したデータ件数: {len(filtered_data)}件")
+
+        # 設備名一覧の取得
+        debug_print("\n【Step 3: 設備名一覧の取得】")
+        equipment_names = manager.get_equipment_names()
+        debug_print(f"設備名の総数: {len(equipment_names)}件")
+
+        debug_print("\n====== 動作確認完了 ======")
+        return Status.NORMAL
+
+    except Exception as e:
+        debug_print(f"予期せぬエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        return Status.ERROR
+
+
+if __name__ == "__main__":
+    try:
+        status = main()
+        exit_code = 1 if status != Status.NORMAL else 0
+        debug_print(f"\n終了コード: {exit_code}")
+        exit(exit_code)
+    except Exception as e:
+        debug_print(f"クリティカルエラー: {str(e)}", True)
+        debug_print(traceback.format_exc(), True)
+        exit(1)
+
+#024_CK00５PRO＿1618
