@@ -1,0 +1,147 @@
+import pandas as pd
+
+
+def compare_equipment_lists(excel_path, sample_list, sheet_name="input"):
+    """
+    Excelファイルから設備名リストを取得し、サンプルリストと比較する関数
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sample_list (list): 比較するサンプルリスト
+    sheet_name (str): シート名 (デフォルトは'input')
+
+    Returns:
+    tuple: (設備名リスト, 比較結果の辞書)
+    """
+    try:
+        # Excelファイルを読み込む
+        print(f"ファイル '{excel_path}' のシート '{sheet_name}' を読み込み中...")
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+        # 読み込んだデータフレームの情報を表示（デバッグ用）
+        print("\n=== 元のデータフレーム ===")
+        print(f"行数: {len(df)}")
+        print(f"列数: {df.shape[1]}")
+        print(f"列名: {df.columns.tolist()}")
+        print("\n先頭5行:")
+        print(df.head())
+
+        # TORICO列と設備名列の存在確認
+        if "TORICO" not in df.columns:
+            print("\n警告: 列名'TORICO'が見つかりません。最初の列を使用します。")
+            # 最初の列をTORICOとして使用
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+
+        # 設備名列の特定
+        equipment_column = None
+        for col in df.columns:
+            if "設備名" in str(col):
+                equipment_column = col
+                break
+
+        if equipment_column is None:
+            print("\n警告: '設備名'という列が見つかりません。E列を使用します。")
+            equipment_column = df.columns[4]  # E列（0から数えて5番目）
+            print(f"設備名列として使用する列: {equipment_column}")
+
+        # TORICO列の値が空でないレコードでフィルタリング
+        filtered_df = df[pd.notna(df["TORICO"]) & (df["TORICO"].astype(str) != "")]
+
+        # フィルタリング後のデータフレーム情報を表示
+        print("\n=== フィルタリング後のデータフレーム ===")
+        print(f"行数: {len(filtered_df)}")
+        print("\n先頭5行:")
+        print(filtered_df.head())
+
+        # 設備名列の値をリストとして取得
+        # NaN値や空の文字列は除外
+        equipment_list = filtered_df[equipment_column].dropna().tolist()
+        equipment_list = [
+            str(item) for item in equipment_list if str(item).strip() != ""
+        ]
+
+        # 設備名リストを表示
+        print("\n=== Excelから取得した設備名リスト ===")
+        for i, equipment in enumerate(equipment_list, 1):
+            print(f"{i}. {equipment}")
+
+        # サンプルリストを表示
+        print("\n=== 比較するサンプルリスト ===")
+        for i, equipment in enumerate(sample_list, 1):
+            print(f"{i}. {equipment}")
+
+        # リストの比較
+        comparison_result = {}
+
+        # 長さの比較
+        comparison_result["長さ一致"] = len(equipment_list) == len(sample_list)
+
+        # 値の比較（順序も考慮）
+        comparison_result["順序を考慮した一致"] = equipment_list == sample_list
+
+        # 値の比較（順序を無視）
+        comparison_result["順序を無視した一致"] = sorted(equipment_list) == sorted(
+            sample_list
+        )
+
+        # 個別の値の比較
+        comparison_result["個別値の比較"] = {}
+        excel_set = set(equipment_list)
+        sample_set = set(sample_list)
+
+        comparison_result["個別値の比較"]["Excelのみに存在"] = list(
+            excel_set - sample_set
+        )
+        comparison_result["個別値の比較"]["サンプルのみに存在"] = list(
+            sample_set - excel_set
+        )
+        comparison_result["個別値の比較"]["両方に存在"] = list(excel_set & sample_set)
+
+        # 比較結果を表示
+        print("\n=== 比較結果 ===")
+        print(f"長さ一致: {comparison_result['長さ一致']}")
+        print(f"順序を考慮した一致: {comparison_result['順序を考慮した一致']}")
+        print(f"順序を無視した一致: {comparison_result['順序を無視した一致']}")
+        print("\n個別値の比較:")
+        print(
+            f"Excelのみに存在: {comparison_result['個別値の比較']['Excelのみに存在']}"
+        )
+        print(
+            f"サンプルのみに存在: {comparison_result['個別値の比較']['サンプルのみに存在']}"
+        )
+        print(f"両方に存在: {comparison_result['個別値の比較']['両方に存在']}")
+
+        return equipment_list, comparison_result
+
+    except FileNotFoundError:
+        print(f"エラー: ファイル '{excel_path}' が見つかりません。")
+        return [], {}
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return [], {}
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\filter.xlsx"
+
+    # サンプルリストの定義
+    sample_list = ["C", "B", "A"]
+
+    # 設備名リストの取得とサンプルリストとの比較
+    equipment_list, comparison_result = compare_equipment_lists(excel_path, sample_list)
+
+    # 詳細な比較結果
+    if equipment_list:
+        print("\n=== 設備名リストの詳細な比較 ===")
+
+        # 一致/不一致の要約
+        if comparison_result["順序を無視した一致"]:
+            print("結果: すべての値が一致しています（順序が異なる可能性あり）")
+        elif comparison_result["個別値の比較"]["両方に存在"]:
+            print(
+                f"結果: 一部の値が一致しています（{len(comparison_result['個別値の比較']['両方に存在'])}個）"
+            )
+        else:
+            print("結果: 一致する値はありません")
+#E列の設備名リストと「C B A」というサンプルリストの値を照合する機能を追加します。
