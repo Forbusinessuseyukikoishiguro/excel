@@ -1,0 +1,90 @@
+import pandas as pd
+
+
+def get_equipment_list_after_torico_filter(excel_path, sheet_name="input"):
+    """
+    Excelファイルを読み込み、TORICO列に値があるレコードでフィルタリングし、
+    設備名列の値をリストとして取得する関数
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sheet_name (str): シート名 (デフォルトは'input')
+
+    Returns:
+    tuple: (フィルタリングされたデータフレーム, 設備名のリスト)
+    """
+    try:
+        # Excelファイルを読み込む
+        print(f"ファイル '{excel_path}' のシート '{sheet_name}' を読み込み中...")
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+        # 読み込んだデータフレームの情報を表示（デバッグ用）
+        print("\n=== 元のデータフレーム ===")
+        print(f"行数: {len(df)}")
+        print(f"列数: {df.shape[1]}")
+        print(f"列名: {df.columns.tolist()}")
+        print("\n先頭5行:")
+        print(df.head())
+
+        # TORICO列と設備名列の存在確認
+        if "TORICO" not in df.columns:
+            print("\n警告: 列名'TORICO'が見つかりません。最初の列を使用します。")
+            # 最初の列をTORICOとして使用
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+            print(f"列を名前変更しました: {df.columns[0]} → 'TORICO'")
+
+        # 設備名列の特定
+        equipment_column = None
+        for col in df.columns:
+            if "設備名" in str(col):
+                equipment_column = col
+                break
+
+        if equipment_column is None:
+            print("\n警告: '設備名'という列が見つかりません。E列を使用します。")
+            equipment_column = df.columns[4]  # E列（0から数えて5番目）
+            print(f"設備名列として使用する列: {equipment_column}")
+
+        # TORICO列の値が空でないレコードでフィルタリング
+        filtered_df = df[pd.notna(df["TORICO"]) & (df["TORICO"].astype(str) != "")]
+
+        # フィルタリング後のデータフレーム情報を表示
+        print("\n=== フィルタリング後のデータフレーム ===")
+        print(f"行数: {len(filtered_df)}")
+        print("\n先頭5行:")
+        print(filtered_df.head())
+
+        # 設備名列の値をリストとして取得
+        # NaN値や空の文字列は除外
+        equipment_list = filtered_df[equipment_column].dropna().tolist()
+        equipment_list = [
+            str(item) for item in equipment_list if str(item).strip() != ""
+        ]
+
+        # 設備名リストを表示
+        print("\n=== 設備名リスト ===")
+        for i, equipment in enumerate(equipment_list, 1):
+            print(f"{i}. {equipment}")
+
+        return filtered_df, equipment_list
+
+    except FileNotFoundError:
+        print(f"エラー: ファイル '{excel_path}' が見つかりません。")
+        return pd.DataFrame(), []
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return pd.DataFrame(), []
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\filter.xlsx"
+    filtered_df, equipment_list = get_equipment_list_after_torico_filter(excel_path)
+
+    if not filtered_df.empty:
+        print("\n=== 処理結果 ===")
+        print(f"TORICOフィルタリング後のデータ数: {len(filtered_df)}行")
+        print(f"抽出された設備名の数: {len(equipment_list)}")
+        print(f"設備名リスト: {equipment_list}")
+        
+#TORICoの列の値でフィルタリングして設備名取得PRO
