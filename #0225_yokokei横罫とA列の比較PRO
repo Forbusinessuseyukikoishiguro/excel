@@ -1,0 +1,211 @@
+import pandas as pd
+import numpy as np
+import os
+
+
+def validate_excel_sums_with_debug(file_path, sheet_name="correct"):
+    """
+    Excelファイルのデータを検証し、A列の値と横方向の合計が一致するか確認する関数。
+    詳細なデバッグ情報を出力します。
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default="correct"
+        検証対象のシート名
+    """
+    try:
+        # 🔍 デバッグ: ファイル読み込み開始
+        print("\n==== 🔍 デバッグ: ファイル読み込み開始 ====")
+        print(f"ファイルパス: {file_path}")
+        print(f"シート名: {sheet_name}")
+
+        # Excelを読み込む
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        # 🔍 デバッグ: ファイル読み込み完了
+        print("\n==== 🔍 デバッグ: ファイル読み込み完了 ====")
+        print(f"データフレームの形状: {df.shape} (行数, 列数)")
+        print("\n最初の5行:")
+        print(df.head(5).to_string())
+
+        # 🔍 デバッグ: データ型の確認
+        print("\n==== 🔍 デバッグ: データ型の確認 ====")
+        print(df.dtypes)
+
+        # 🔍 デバッグ: 欠損値の確認
+        print("\n==== 🔍 デバッグ: 欠損値の確認 ====")
+        missing_values = df.isnull().sum()
+        print(missing_values)
+
+        # ヘッダー行の情報
+        print("\n==== 🔍 デバッグ: ヘッダー情報 ====")
+        print(f"カラム名: {df.columns.tolist()}")
+
+        # A列（総合計）のデータ
+        total_A = df.iloc[:, 0]  # A列（1列目）
+
+        # 🔍 デバッグ: A列の値
+        print("\n==== 🔍 デバッグ: A列の値 ====")
+        print(total_A.to_string())
+
+        # B列以降のデータ（数値化して合計）
+        print("\n==== 🔍 デバッグ: B列以降のデータ変換前 ====")
+        columns_B_onward = df.iloc[:, 1:]
+        print(columns_B_onward.head(5).to_string())
+
+        # 数値化処理
+        print("\n==== 🔍 デバッグ: 数値化処理 ====")
+        columns_B_onward_numeric = columns_B_onward.apply(
+            pd.to_numeric, errors="coerce"
+        )
+        print("数値化後のデータ:")
+        print(columns_B_onward_numeric.head(5).to_string())
+
+        # 各行の合計を計算
+        total_other = columns_B_onward_numeric.sum(axis=1)
+
+        # 🔍 デバッグ: 横方向の合計
+        print("\n==== 🔍 デバッグ: 横方向の合計 ====")
+        print(total_other.to_string())
+
+        # 差分の計算
+        diff = total_A - total_other
+
+        # 🔍 デバッグ: 差分
+        print("\n==== 🔍 デバッグ: A列と横方向合計の差分 ====")
+        print(diff.to_string())
+
+        # 一致確認 - pandas Seriesに変換
+        is_match = pd.Series(np.isclose(total_A, total_other), index=total_A.index)
+
+        # 🔍 デバッグ: 一致確認結果
+        print("\n==== 🔍 デバッグ: 一致確認結果 ====")
+        print(is_match.to_string())
+
+        # 結果のデータフレーム作成
+        result_df = pd.DataFrame(
+            {
+                "A列の値": total_A,
+                "横方向の合計": total_other,
+                "差分": diff,
+                "一致": is_match,
+            }
+        )
+
+        # 🔍 デバッグ: 最終結果
+        print("\n==== 🔍 デバッグ: 計算チェック最終結果 ====")
+        print(result_df.to_string())
+
+        # 統計情報
+        print("\n==== 🔍 デバッグ: 統計情報 ====")
+        total_rows = len(result_df)
+        match_rows = result_df["一致"].sum()
+        print(f"検証総行数: {total_rows}")
+        print(f"一致した行数: {match_rows} ({match_rows/total_rows*100:.1f}%)")
+        print(
+            f"不一致の行数: {total_rows - match_rows} ({(total_rows - match_rows)/total_rows*100:.1f}%)"
+        )
+
+        # 不一致の行を抽出
+        mismatch_rows = result_df[~result_df["一致"]]
+
+        if not mismatch_rows.empty:
+            print("\n==== 🔍 デバッグ: 不一致の行 ====")
+            print(mismatch_rows.to_string())
+
+            # 不一致の詳細分析
+            print("\n==== 🔍 デバッグ: 不一致の詳細分析 ====")
+            for idx in mismatch_rows.index:
+                print(f"\n行 {idx+1} の詳細分析:")
+                print(f"A列の値: {total_A[idx]}")
+                print(f"横方向の合計: {total_other[idx]}")
+                print(f"差分: {diff[idx]}")
+
+                # 各列の値を表示
+                print("各列の値:")
+                row_values = columns_B_onward_numeric.iloc[idx]
+                for col_idx, value in enumerate(row_values):
+                    if pd.notna(value):
+                        col_name = columns_B_onward.columns[col_idx]
+                        contribution = (
+                            (value / total_other[idx]) * 100
+                            if total_other[idx] != 0
+                            else 0
+                        )
+                        print(f"  {col_name}: {value} (寄与率: {contribution:.1f}%)")
+
+        # 元のデータフレームと計算結果を結合
+        full_result = pd.concat(
+            [df, result_df.rename(columns={"A列の値": "元のA列値"})], axis=1
+        )
+
+        print("\n==== 🔍 デバッグ: 完全な結果データフレーム ====")
+        print(full_result.head(10).to_string())
+
+        return result_df
+
+    except Exception as e:
+        print(f"\n❌ エラーが発生しました: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None
+
+
+# 処理のメイン関数
+def process_excel_validation(file_path, sheet_name="correct"):
+    """
+    Excelファイルの検証を実行し、結果を出力する関数
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default="correct"
+        検証対象のシート名
+    """
+    print("\n===== Excel横行計算検証処理の開始 =====")
+
+    # ファイルの存在確認
+    if not os.path.exists(file_path):
+        print(f"❌ エラー: ファイル '{file_path}' が見つかりません")
+        return
+
+    print(f"✅ ファイル '{file_path}' を処理します")
+
+    # 検証実行（デバッグ情報付き）
+    result_df = validate_excel_sums_with_debug(file_path, sheet_name)
+
+    if result_df is not None:
+        # 検証結果のサマリー
+        match_count = result_df["一致"].sum()
+        total_count = len(result_df)
+
+        print("\n===== 検証結果サマリー =====")
+        print(f"✅ 検証完了: 合計 {total_count} 行")
+        print(f"✅ 一致: {match_count} 行 ({match_count/total_count*100:.1f}%)")
+        print(
+            f"❌ 不一致: {total_count - match_count} 行 ({(total_count - match_count)/total_count*100:.1f}%)"
+        )
+
+        # 不一致がある場合の処理
+        if match_count < total_count:
+            print("\n不一致の行があります。詳細なデバッグ情報を確認してください。")
+
+            # ここで追加の処理（例: 結果の保存など）を行うことも可能
+        else:
+            print("\nすべての行でA列の値と横方向の合計が一致しています。👍")
+
+    print("\n===== Excel横行計算検証処理の終了 =====")
+
+
+if __name__ == "__main__":
+    file_path = "C:\\Users\\yukik\\Desktop\\ex\\0225test_yokokei\\yokokei.xlsx"
+    sheet_name = "correct"
+
+    # 検証実行
+    process_excel_validation(file_path, sheet_name)
+
+#0225_yokokei横罫とA列の比較PRO
