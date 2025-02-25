@@ -1,0 +1,68 @@
+import pandas as pd
+import openpyxl
+
+
+def get_sheet_names_pandas(excel_path):
+    """
+    pandasを使ってExcelファイルのシート名一覧を取得する関数
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+
+    Returns:
+    list: シート名のリスト
+    """
+    try:
+        # ExcelFileオブジェクトを作成
+        excel_file = pd.ExcelFile(excel_path)
+
+        # シート名のリストを取得
+        sheet_names = excel_file.sheet_names
+
+        return sheet_names
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return []
+
+
+def get_sheet_names_openpyxl(excel_path):
+    """
+    openpyxlを使ってExcelファイルのシート名一覧を取得する関数
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+
+    Returns:
+    list: シート名のリスト
+    """
+    try:
+        # ワークブックを読み込む
+        workbook = openpyxl.load_workbook(excel_path, read_only=True)
+
+        # シート名のリストを取得
+        sheet_names = workbook.sheetnames
+
+        return sheet_names
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return []
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\yokokei.xlsx"
+
+    # pandasを使った方法
+    print("--- pandasを使った結果 ---")
+    pandas_sheets = get_sheet_names_pandas(excel_path)
+    print(f"シート数: {len(pandas_sheets)}")
+    for i, sheet in enumerate(pandas_sheets, 1):
+        print(f"{i}. {sheet}")
+
+    print("\n--- openpyxlを使った結果 ---")
+    openpyxl_sheets = get_sheet_names_openpyxl(excel_path)
+    print(f"シート数: {len(openpyxl_sheets)}")
+    for i, sheet in enumerate(openpyxl_sheets, 1):
+        print(f"{i}. {sheet}")
+        
+#PRO0225_Excelデータフレーム取得
