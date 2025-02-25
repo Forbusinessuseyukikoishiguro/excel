@@ -1,0 +1,117 @@
+import pandas as pd
+import openpyxl
+
+
+
+
+def get_first_row_values_pandas(excel_path, sheet_name, start_col="B"):
+    """
+    pandasを使って1行目のB列以降の値を空白まで取得してリストに入れる関数
+
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sheet_name (str): シート名
+    start_col (str): 開始列名 (デフォルトは'B')
+
+
+    Returns:
+    list: 1行目の値のリスト (空白セルまで)
+    """
+    try:
+        # データフレームとして読み込む
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+
+        # 列名をリストとして取得
+        columns = df.columns.tolist()
+
+
+        # 列のインデックスを取得
+        start_idx = 0
+        for i, col in enumerate(columns):
+            if i == 1:  # B列は通常インデックス1
+                start_idx = i
+                break
+
+
+        # 開始列から空白セルまでの値を取得
+        values = []
+        for i in range(start_idx, len(columns)):
+            col_value = str(columns[i]).strip()
+            if col_value == "" or pd.isna(columns[i]):
+                break
+            values.append(columns[i])
+
+
+        return values
+    except Exception as e:
+        print(f"pandasによる取得中にエラーが発生しました: {e}")
+        return []
+
+
+
+
+def get_first_row_values_openpyxl(excel_path, sheet_name, start_col="B"):
+    """
+    openpyxlを使って1行目のB列以降の値を空白まで取得してリストに入れる関数
+
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sheet_name (str): シート名
+    start_col (str): 開始列名 (デフォルトは'B')
+
+
+    Returns:
+    list: 1行目の値のリスト (空白セルまで)
+    """
+    try:
+        # ワークブックを読み込む
+        wb = openpyxl.load_workbook(excel_path, read_only=True)
+        ws = wb[sheet_name]
+
+
+        # 列の文字から列インデックスを取得
+        start_col_idx = openpyxl.utils.column_index_from_string(start_col)
+
+
+        # 1行目の値を取得
+        values = []
+        for cell in ws[1][start_col_idx - 1 :]:
+            if cell.value is None or str(cell.value).strip() == "":
+                break
+            values.append(cell.value)
+
+
+        return values
+    except Exception as e:
+        print(f"openpyxlによる取得中にエラーが発生しました: {e}")
+        return []
+
+
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\yokokei.xlsx"
+    sheet_name = "correct"  # ここに実際のシート名を入力してください
+
+
+    # pandasを使う方法
+    print("=== pandasを使った結果 ===")
+    pandas_values = get_first_row_values_pandas(excel_path, sheet_name)
+    print(f"取得した値の数: {len(pandas_values)}")
+    print(f"値: {pandas_values}")
+
+
+    # openpyxlを使う方法
+    print("\n=== openpyxlを使った結果 ===")
+    openpyxl_values = get_first_row_values_openpyxl(excel_path, sheet_name)
+    print(f"取得した値の数: {len(openpyxl_values)}")
+    print(f"値: {openpyxl_values}")
+   
+#Excelの1行目（Bセル以降から空白までの列）の値を取得してリストに入れる機能を追加します。
+
+
+
