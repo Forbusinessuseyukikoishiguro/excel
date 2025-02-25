@@ -1,0 +1,40 @@
+import pandas as pd
+
+def get_sheet_as_dataframe(excel_path, sheet_name):
+    """
+    指定したシートのデータをデータフレームとして取得する関数
+    
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sheet_name (str): シート名
+    
+    Returns:
+    pandas.DataFrame: シートのデータを含むデータフレーム
+    """
+    try:
+        # 指定したシートのデータをデータフレームとして読み込む
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+        print(f"シート '{sheet_name}' を正常に読み込みました。")
+        return df
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return pd.DataFrame()  # 空のデータフレームを返す
+
+# 使用例
+if __name__ == "__main__":
+    # Excelファイルのパスと読み込みたいシート名を指定
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\yokokei.xlsx"
+    sheet_name = "correct"  # ここに実際のシート名を入力してください
+    
+    # データフレームを取得
+    df = get_sheet_as_dataframe(excel_path, sheet_name)
+    
+    # 取得したデータフレームの情報を表示
+    if not df.empty:
+        print("\nデータフレームの先頭5行:")
+        print(df.head())
+        
+        print("\nデータフレームの情報:")
+        print(f"行数: {len(df)}")
+        print(f"列数: {df.shape[1]}")
+        print(f"列名: {df.columns.tolist()}")
