@@ -1,0 +1,123 @@
+import pandas as pd
+import numpy as np
+
+def get_sequential_cell_pairs(file_path, sheet_name="correct"):
+    """
+    Excelファイルから「A2とB1」「A3とC1」「A4とD1」のように
+    A列と企業列のセルペアを連続的に取得する関数
+    
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default="correct"
+        対象のシート名
+        
+    Returns:
+    --------
+    list
+        [
+            {'A列セル': 'A2', '企業セル': 'B1', 'A列値': 値, '企業値': 値},
+            {'A列セル': 'A3', '企業セル': 'C1', 'A列値': 値, '企業値': 値},
+            {'A列セル': 'A4', '企業セル': 'D1', 'A列値': 値, '企業値': 値},
+            ...
+        ]
+    """
+    try:
+        # Excelファイルを読み込む
+        df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+        
+        # 企業列のセルを取得 (1行目のB列以降)
+        company_cells = []
+        for col_idx in range(1, len(df.columns)):
+            col_letter = chr(65 + col_idx)  # B, C, D...
+            company_cells.append(f"{col_letter}1")
+        
+        # 結果を格納するリスト
+        sequence_pairs = []
+        
+        # A列の各行に対して、対応する企業列のセルをペアにする
+        # A2→B1, A3→C1, A4→D1, ...という形で連続的にペア
+        for row_idx in range(1, min(len(df) - 1, len(company_cells) + 1)):
+            a_cell = f"A{row_idx + 1}"  # A2, A3, A4, ...
+            
+            # 対応する企業セル（循環させる場合）
+            company_idx = (row_idx - 1) % len(company_cells)
+            company_cell = company_cells[company_idx]
+            
+            # A列の値を取得
+            a_value = df.iloc[row_idx, 0]
+            
+            # 企業セルの列インデックスを取得
+            company_col = ord(company_cell[0]) - ord('A')
+            # 企業セルの行インデックスを取得
+            company_row = int(company_cell[1:]) - 1
+            
+            # 企業セルの値を取得
+            company_value = df.iloc[company_row, company_col]
+            
+            # ペア情報を追加
+            sequence_pairs.append({
+                'A列セル': a_cell,
+                '企業セル': company_cell,
+                'A列値': a_value,
+                '企業値': company_value
+            })
+        
+        return sequence_pairs
+    
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def print_sequence_pairs(pairs):
+    """
+    連続的なセルペアを表示する関数
+    
+    Parameters:
+    -----------
+    pairs : list
+        get_sequential_cell_pairs関数の戻り値
+    """
+    if not pairs:
+        print("ペア関係がありません")
+        return
+    
+    print("\n=== A列と企業列の連続ペア ===")
+    for pair in pairs:
+        print(f"{pair['A列セル']}({pair['A列値']}) と {pair['企業セル']}({pair['企業値']})")
+    
+    # 値の関係分析
+    print("\n=== 値の関係分析 ===")
+    for pair in pairs:
+        a_value = pair['A列値']
+        company_value = pair['企業値']
+        
+        if isinstance(a_value, (int, float)) and isinstance(company_value, (int, float)):
+            if np.isclose(a_value, company_value):
+                print(f"{pair['A列セル']} と {pair['企業セル']}: ✓ {a_value} = {company_value}")
+            else:
+                diff = a_value - company_value
+                print(f"{pair['A列セル']} と {pair['企業セル']}: ✗ {a_value} ≠ {company_value} (差分: {diff})")
+        else:
+            print(f"{pair['A列セル']} と {pair['企業セル']}: 数値比較できません")
+
+# 使用例
+if __name__ == "__main__":
+    file_path = "C:\\Users\\yukik\\Desktop\\ex\\0225test_yokokei\\yokokei.xlsx"
+    sheet_name = "correct"
+    
+    # 連続的なセルペアを取得
+    sequence_pairs = get_sequential_cell_pairs(file_path, sheet_name)
+    
+    # データの表示
+    print_sequence_pairs(sequence_pairs)
+    
+    # セルペアをシンプルな表記で表示
+    print("\n=== シンプルな表記 ===")
+    for pair in sequence_pairs:
+        print(f"{pair['A列セル']} と {pair['企業セル']}")
+        
+#0225_|のリストいいものシンプル表記
