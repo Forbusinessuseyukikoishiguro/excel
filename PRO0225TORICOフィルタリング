@@ -1,0 +1,78 @@
+import pandas as pd
+
+
+def read_and_filter_excel(excel_path, sheet_name="input"):
+    """
+    Excelファイルを読み込み、TORICO列（A列）が空でないレコードでフィルタリングする関数
+
+    Parameters:
+    excel_path (str): Excelファイルのパス
+    sheet_name (str): シート名 (デフォルトは'input')
+
+    Returns:
+    tuple: (元のデータフレーム, フィルタリングされたデータフレーム)
+    """
+    try:
+        # Excelファイルを読み込む
+        print(f"ファイル '{excel_path}' のシート '{sheet_name}' を読み込み中...")
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+        # 読み込んだデータフレームの情報を表示（デバッグ用）
+        print("\n=== 元のデータフレーム ===")
+        print(f"行数: {len(df)}")
+        print(f"列数: {df.shape[1]}")
+        print(f"列名: {df.columns.tolist()}")
+        print("\n先頭5行:")
+        print(df.head())
+
+        # TORICO列の存在確認
+        # 今回のデータでは最初の列が「TORICO」なので、その列を使用
+        if "TORICO" not in df.columns:
+            print("\n警告: 列名'TORICO'が見つかりません。最初の列を使用します。")
+            # 最初の列をTORICOとして使用
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+            print(f"列を名前変更しました: {df.columns[0]} → 'TORICO'")
+
+        # TORICO列の値が空でないレコードでフィルタリング
+        # NaN、None、空文字列をすべて考慮
+        filtered_df = df[pd.notna(df["TORICO"]) & (df["TORICO"].astype(str) != "")]
+
+        # フィルタリング後のデータフレーム情報を表示
+        print("\n=== フィルタリング後のデータフレーム ===")
+        print(f"行数: {len(filtered_df)}")
+        print("\n先頭5行:")
+        print(filtered_df.head())
+
+        return df, filtered_df
+
+    except FileNotFoundError:
+        print(f"エラー: ファイル '{excel_path}' が見つかりません。")
+        return pd.DataFrame(), pd.DataFrame()
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return pd.DataFrame(), pd.DataFrame()
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\filter.xlsx"
+    original_df, filtered_df = read_and_filter_excel(excel_path)
+
+    if not filtered_df.empty:
+        print("\n=== フィルタリング結果の詳細 ===")
+        print(f"元のデータ数: {len(original_df)}行")
+        print(f"フィルタリング後のデータ数: {len(filtered_df)}行")
+        print(f"抽出された行の割合: {len(filtered_df) / len(original_df) * 100:.1f}%")
+
+        # TORICOの値の分布を確認
+        if not original_df.empty:
+            print("\nTORICO列の値の分布:")
+            value_counts = original_df["TORICO"].value_counts(dropna=False)
+            print(value_counts)
+
+        # 結果の詳細表示
+        print("\n=== フィルタリング後のデータ詳細 ===")
+        pd.set_option("display.max_columns", None)  # すべての列を表示
+        print(filtered_df)
+
+#0225_TORICOフィルタリング
