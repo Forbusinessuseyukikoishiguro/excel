@@ -1,0 +1,119 @@
+import pandas as pd
+import os
+from datetime import datetime
+
+
+def export_records_by_equipment_order(
+    excel_path, equipment_order_list, output_path=None, sheet_name="input"
+):
+    """
+    指定された設備名リストの順番に合わせてレコードを抽出し、新しいExcelファイルに出力する関数
+
+    Parameters:
+    excel_path (str): 入力Excelファイルのパス
+    equipment_order_list (list): 設備名の順序リスト
+    output_path (str): 出力Excelファイルのパス (Noneの場合は自動生成)
+    sheet_name (str): 入力シート名 (デフォルトは'input')
+
+    Returns:
+    tuple: (出力ファイルパス, 抽出されたデータフレーム)
+    """
+    try:
+        # Excelファイルを読み込む
+        print(f"ファイル '{excel_path}' のシート '{sheet_name}' を読み込み中...")
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+        # 読み込んだデータフレームの情報を表示
+        print("\n=== 元のデータフレーム ===")
+        print(f"行数: {len(df)}")
+        print(f"列数: {df.shape[1]}")
+        print(f"列名: {df.columns.tolist()}")
+
+        # TORICO列と設備名列の存在確認
+        if "TORICO" not in df.columns:
+            print("\n警告: 列名'TORICO'が見つかりません。最初の列を使用します。")
+            # 最初の列をTORICOとして使用
+            df = df.rename(columns={df.columns[0]: "TORICO"})
+
+        # 設備名列の特定
+        equipment_column = None
+        for col in df.columns:
+            if "設備名" in str(col):
+                equipment_column = col
+                break
+
+        if equipment_column is None:
+            print("\n警告: '設備名'という列が見つかりません。E列を使用します。")
+            equipment_column = df.columns[4]  # E列（0から数えて5番目）
+            print(f"設備名列として使用する列: {equipment_column}")
+
+        # TORICO列の値が空でないレコードでフィルタリング
+        filtered_df = df[pd.notna(df["TORICO"]) & (df["TORICO"].astype(str) != "")]
+        print(f"\nTORICOフィルタリング後の行数: {len(filtered_df)}")
+
+        # 指定された設備名リストの順番に合わせたデータフレームを作成
+        result_dfs = []
+
+        print("\n=== 設備名ごとのレコード抽出 ===")
+        for equipment in equipment_order_list:
+            # 設備名に一致するレコードを抽出
+            matching_records = filtered_df[filtered_df[equipment_column] == equipment]
+            print(f"設備名 '{equipment}' に一致するレコード数: {len(matching_records)}")
+
+            if not matching_records.empty:
+                result_dfs.append(matching_records)
+
+        # すべての結果を結合
+        if result_dfs:
+            result_df = pd.concat(result_dfs, ignore_index=True)
+            print(f"\n抽出された合計レコード数: {len(result_df)}")
+        else:
+            result_df = pd.DataFrame()
+            print("\n設備名に一致するレコードはありませんでした。")
+
+        # 結果がある場合、出力ファイルパスを生成して保存
+        if not result_df.empty:
+            if output_path is None:
+                # 現在のディレクトリに、元のファイル名+タイムスタンプで保存
+                base_name = os.path.splitext(os.path.basename(excel_path))[0]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"{base_name}_ordered_{timestamp}.xlsx"
+
+            # Excelファイルに保存
+            result_df.to_excel(output_path, sheet_name="抽出結果", index=False)
+            print(f"\n結果を '{output_path}' に保存しました。")
+
+            return output_path, result_df
+        else:
+            print("\n保存するレコードがありません。")
+            return None, pd.DataFrame()
+
+    except FileNotFoundError:
+        print(f"エラー: ファイル '{excel_path}' が見つかりません。")
+        return None, pd.DataFrame()
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return None, pd.DataFrame()
+
+
+# 使用例
+if __name__ == "__main__":
+    excel_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\filter.xlsx"
+
+    # 設備名の順序リスト（この順番でレコードを取得）
+    equipment_order_list = ["C", "B", "A"]
+
+    # 出力ファイルパスの指定（Noneの場合は自動生成）
+    output_path = r"C:\Users\yukik\Desktop\ex\0225test_yokokei\filtered_result.xlsx"
+
+    # 設備名リストの順番に合わせてレコードを抽出し、Excelファイルとして出力
+    output_file, ordered_df = export_records_by_equipment_order(
+        excel_path, equipment_order_list, output_path
+    )
+
+    # 結果の表示
+    if ordered_df is not None and not ordered_df.empty:
+        print("\n=== 抽出結果の先頭5行 ===")
+        print(ordered_df.head())
+
+#0225_設備名リストの順番に合わせてレコードを取得し、新しいExcelファイルとして出力するコードを作成します。
