@@ -1,0 +1,239 @@
+import pandas as pd
+import numpy as np
+import os
+
+
+def validate_excel_sums_with_status(file_path, sheet_name="correct"):
+    """
+    Excelファイルのデータを検証し、A列の値と横方向の合計が一致するか確認する関数。
+    ステータスコードを返します。
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default="correct"
+        検証対象のシート名
+
+    Returns:
+    --------
+    tuple
+        (status_code, result_df, message)
+
+        status_code:
+        0: 全て存在している（正常）
+        1: 正常終了（継続処理）
+        2: 存在しない（チェック自体は全発電所分実施）
+        9: 予期せぬエラー
+    """
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            return 2, None, f"ファイル '{file_path}' が存在しません"
+
+        # Excelを読み込む
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+        except Exception as e:
+            return (
+                2,
+                None,
+                f"シート '{sheet_name}' が存在しないか、読み込みに失敗しました: {str(e)}",
+            )
+
+        # データが空かどうか確認
+        if df.empty:
+            return 2, None, f"シート '{sheet_name}' にデータがありません"
+
+        # A列（総合計）のデータ
+        total_A = df.iloc[:, 0]  # A列（1列目）
+
+        # B列以降のデータ（数値化して合計）
+        columns_B_onward = df.iloc[:, 1:]
+        columns_B_onward_numeric = columns_B_onward.apply(
+            pd.to_numeric, errors="coerce"
+        )
+        total_other = columns_B_onward_numeric.sum(axis=1)
+
+        # 差分の計算
+        diff = total_A - total_other
+
+        # 一致確認 - pandas Seriesに変換
+        is_match = pd.Series(
+            np.isclose(total_A, total_other, rtol=1e-05, atol=1e-08, equal_nan=False),
+            index=total_A.index,
+        )
+
+        # 結果のデータフレーム作成
+        result_df = pd.DataFrame(
+            {
+                "A列の値": total_A,
+                "横方向の合計": total_other,
+                "差分": diff,
+                "一致": is_match,
+            }
+        )
+
+        # 空白や無効値の行を含めた総行数
+        total_rows = len(result_df)
+
+        # 有効な行数（A列が数値のみ）
+        valid_rows = sum(
+            pd.notna(total_A) & (total_A.apply(lambda x: isinstance(x, (int, float))))
+        )
+
+        # 一致した行数
+        match_rows = is_match.sum()
+
+        # ステータスコードの判定
+        if total_rows == 0:
+            return 2, result_df, "データが存在しません"
+        elif match_rows == valid_rows and valid_rows == total_rows:
+            return (
+                0,
+                result_df,
+                "全て存在しており、全ての行でA列と横方向の合計が一致しています",
+            )
+        elif match_rows == valid_rows and valid_rows < total_rows:
+            return (
+                1,
+                result_df,
+                "有効なデータは全て一致していますが、一部の行に無効なデータがあります（継続処理可能）",
+            )
+        else:
+            return (
+                1,
+                result_df,
+                "一部の行でA列と横方向の合計が一致していません（継続処理可能）",
+            )
+
+    except Exception as e:
+        import traceback
+
+        error_details = traceback.format_exc()
+        return 9, None, f"予期せぬエラーが発生しました: {str(e)}\n{error_details}"
+
+
+def process_with_status_code(
+    file_path, sheet_name="correct", output_sheet_name="計算チェック結果"
+):
+    """
+    Excelファイルの検証を実行し、ステータスコードと結果を返す関数
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default="correct"
+        検証対象のシート名
+    output_sheet_name : str, default="計算チェック結果"
+        結果を出力するシート名（オプション）
+
+    Returns:
+    --------
+    dict
+        {
+            'status_code': ステータスコード,
+            'message': メッセージ,
+            'details': 詳細情報の辞書,
+            'dataframe': 結果のデータフレーム（エラー時はNone）
+        }
+    """
+    print(f"\n===== ファイル '{file_path}' のシート '{sheet_name}' を検証します =====")
+
+    # 検証実行
+    status_code, result_df, message = validate_excel_sums_with_status(
+        file_path, sheet_name
+    )
+
+    # 結果の詳細情報
+    details = {
+        "file_path": file_path,
+        "sheet_name": sheet_name,
+        "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    if result_df is not None:
+        total_rows = len(result_df)
+        valid_rows = sum(
+            pd.notna(result_df["A列の値"])
+            & (result_df["A列の値"].apply(lambda x: isinstance(x, (int, float))))
+        )
+        match_rows = result_df["一致"].sum()
+        mismatch_rows = valid_rows - match_rows
+
+        details.update(
+            {
+                "total_rows": total_rows,
+                "valid_rows": valid_rows,
+                "match_rows": match_rows,
+                "mismatch_rows": mismatch_rows,
+                "match_percentage": (
+                    (match_rows / valid_rows * 100) if valid_rows > 0 else 0
+                ),
+            }
+        )
+
+        # 必要に応じて結果をExcelに保存
+        if output_sheet_name:
+            try:
+                with pd.ExcelWriter(
+                    file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+                ) as writer:
+                    result_df.to_excel(
+                        writer, sheet_name=output_sheet_name, index=False
+                    )
+                details["output_saved"] = True
+                details["output_sheet_name"] = output_sheet_name
+            except Exception as e:
+                details["output_saved"] = False
+                details["output_error"] = str(e)
+
+    # ステータスコードに応じたメッセージ
+    status_messages = {
+        0: "✅ 全て存在している（正常）",
+        1: "⚠️ 正常終了（継続処理）",
+        2: "❌ 存在しない（チェック自体は全発電所分実施）",
+        9: "❌ 予期せぬエラー",
+    }
+
+    print(
+        f"\nステータス: {status_code} - {status_messages.get(status_code, '不明なステータス')}"
+    )
+    print(f"メッセージ: {message}")
+
+    if result_df is not None and "match_percentage" in details:
+        print(
+            f"\n検証結果: 全{total_rows}行中、有効{valid_rows}行、一致{match_rows}行 ({details['match_percentage']:.1f}%)"
+        )
+
+        if details.get("output_saved", False):
+            print(f"結果をシート '{output_sheet_name}' に保存しました")
+
+    # 最終的な結果を辞書形式で返す
+    result = {
+        "status_code": status_code,
+        "message": message,
+        "status_message": status_messages.get(status_code, "不明なステータス"),
+        "details": details,
+        "dataframe": result_df,
+    }
+
+    return result
+
+
+if __name__ == "__main__":
+    file_path = "C:\\Users\\yukik\\Desktop\\ex\\0225test_yokokei\\yokokei.xlsx"
+    sheet_name = "correct"
+
+    # 検証実行
+    result = process_with_status_code(file_path, sheet_name)
+
+    # ステータスコードの表示
+    print(f"\n最終ステータス: {result['status_code']}")
+
+    # データフレームの一部を表示（データが存在する場合）
+    if result["dataframe"] is not None:
+        print("\n検証結果データ（先頭5行）:")
+        print(result["dataframe"].head(5).to_string())
+#ステータスNO追加横罫
