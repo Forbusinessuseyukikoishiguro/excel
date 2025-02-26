@@ -1,0 +1,136 @@
+import pandas as pd
+import sys
+from excel_checker_class import *
+
+
+def process_equipment_data():
+    """
+    TORICOに値があるデータをフィルタリングし、設備名リストと比較して
+    マッチするレコードをアウトプットシートに書き込む
+
+    Returns:
+    int: ステータスID
+    """
+    try:
+        # ファイルパスとシート名を指定
+        file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+        data_sheet = "データフレーム"
+        output_sheet = "アウトプット"
+
+        # Excel読み込み
+        print(f"ファイル '{file_path}' からデータを読み込みます...")
+
+        # データフレームシートの読み込み
+        df_original = pd.read_excel(file_path, sheet_name=data_sheet)
+
+        # データの基本情報を出力
+        print(f"\n===== {data_sheet}シートの情報 =====")
+        print(f"行数: {len(df_original)}")
+        print(f"列数: {len(df_original.columns)}")
+        print(f"列名: {[str(col) for col in df_original.columns]}")
+
+        # 設備名リスト [A, B, C] の定義
+        equipment_list = ["A", "B", "C"]
+        print(f"\n設備名リスト: {equipment_list}")
+
+        # TORICO列（A列）に値があるデータでフィルタリング
+        torico_column = df_original.columns[0]  # 最初の列を"TORICO"列と仮定
+
+        # フィルタリング: TORICO列が空でないものを抽出
+        df_filtered = df_original[
+            df_original[torico_column].notna()
+            & (df_original[torico_column].astype(str).str.strip() != "")
+        ]
+
+        # フィルタリング結果のデバッグプリント
+        print(f"\n===== TORICOに値があるデータ ({len(df_filtered)}行) =====")
+        print(df_filtered.head())
+
+        # 設備名列（H列）の取得
+        if len(df_original.columns) >= 8:  # H列は8番目の列
+            equipment_column = df_original.columns[7]  # H列
+
+            # 設備名リストに含まれる設備名を持つレコードをフィルタリング
+            df_matched = df_filtered[df_filtered[equipment_column].isin(equipment_list)]
+
+            print(f"\n===== 設備名リストとマッチするデータ ({len(df_matched)}行) =====")
+            print(df_matched)
+
+            # 設備名リストの順番に並べ替え
+            # まず設備名列を基準にして並べ替え用の順序インデックスを作成
+            df_matched["sort_index"] = df_matched[equipment_column].apply(
+                lambda x: (
+                    equipment_list.index(x)
+                    if x in equipment_list
+                    else len(equipment_list)
+                )
+            )
+
+            # 並べ替え
+            df_sorted = df_matched.sort_values("sort_index")
+
+            # 並べ替え用の列を削除
+            df_sorted = df_sorted.drop("sort_index", axis=1)
+
+            print(f"\n===== 設備名リスト順に並べ替えたデータ =====")
+            print(df_sorted)
+
+            # Excelファイルにアウトプットシートとして書き込み
+            try:
+                with pd.ExcelWriter(
+                    file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+                ) as writer:
+                    df_sorted.to_excel(writer, sheet_name=output_sheet, index=False)
+                print(f"\n結果を '{output_sheet}' シートに書き込みました。")
+
+                # ステータスID: 0 (正常終了)
+                return 0
+
+            except Exception as e:
+                print(f"シートへの書き込みエラー: {e}", file=sys.stderr)
+                # ステータスID: 9 (予期せぬエラー)
+                return 9
+
+        else:
+            print("エラー: H列（設備名列）が見つかりません。")
+            # ステータスID: 2 (存在しない)
+            return 2
+
+    except Exception as e:
+        print(f"エラーが発生しました: {e}", file=sys.stderr)
+        # ステータスID: 9 (予期せぬエラー)
+        return 9
+
+
+# メインの処理
+if __name__ == "__main__":
+    # 設備名データの処理と書き込み
+    status = process_equipment_data()
+
+    # ステータスIDに応じたメッセージ
+    if status == 0:
+        print("\n処理が正常に完了しました。")
+    elif status == 2:
+        print("\n必要なデータが存在しません。")
+    elif status == 9:
+        print("\n予期せぬエラーが発生しました。")
+
+    # 終了コードとしてステータスIDを返す
+    sys.exit(status)
+
+
+# 0226PRO
+# Excelファイルの「データフレーム」シートからデータを読み込みます
+# TORICOに値がある行（A列に値がある行）をフィルタリングします#
+# 設備名リスト（A, B, C）を定義します
+# フィルタリングしたデータから、H列（設備名列）が設備名リストに含まれるレコードを抽出します
+# 抽出したレコードを設備名リストの順番（A, B, C）に並べ替えます
+# 並べ替えたデータを「アウトプット」シートに書き込みます
+
+# エラーハンドリングも組み込んでおり、各種エラーに対応したステータスIDを返します。
+
+
+# 残課題※趣味枠学び
+# ①アウトプットに書き出すときに、色シートのレコード一行コピペして、アウトプットに書き出す
+##② 並べ替えたデータを「アウトプット」シートに書き込みます
+# ↑を設備名分繰り返したい。※色は指定したい。A２黄色　A4オレンジ　A６青など。がうまくいかない状況です。
