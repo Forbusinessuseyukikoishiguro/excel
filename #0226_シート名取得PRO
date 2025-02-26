@@ -1,0 +1,58 @@
+# 方法1: pandasを使用する場合
+import pandas as pd
+
+
+def check_sheets_pandas(file_path):
+    try:
+        # Excelファイルを読み込む（すべてのシートを読み込まないようにする）
+        excel_file = pd.ExcelFile(file_path)
+
+        # シート名のリストを取得
+        sheet_names = excel_file.sheet_names
+
+        print(f"ファイル '{file_path}' には {len(sheet_names)} 個のシートがあります")
+        print("シート名のリスト:", sheet_names)
+
+        return len(sheet_names), sheet_names
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return None, None
+
+
+# 方法2: openpyxlを使用する場合
+from openpyxl import load_workbook
+
+
+def check_sheets_openpyxl(file_path):
+    try:
+        # ワークブックを読み込む（データのみ読み込み）
+        workbook = load_workbook(filename=file_path, read_only=True)
+
+        # シート名のリストを取得
+        sheet_names = workbook.sheetnames
+
+        print(f"ファイル '{file_path}' には {len(sheet_names)} 個のシートがあります")
+        print("シート名のリスト:", sheet_names)
+
+        # ワークブックを閉じる
+        workbook.close()
+
+        return len(sheet_names), sheet_names
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        return None, None
+
+
+# 使用例
+if __name__ == "__main__":
+    file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+
+    # pandasを使用する場合
+    print("\n--- pandasを使用 ---")
+    check_sheets_pandas(file_path)
+
+    # openpyxlを使用する場合
+    print("\n--- openpyxlを使用 ---")
+    check_sheets_openpyxl(file_path)
+    
+#0226_シート名取得PRO
