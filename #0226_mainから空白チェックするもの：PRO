@@ -1,0 +1,57 @@
+import sys
+import argparse
+from excel_checker_class import ExcelDataFrameDebugger, check_excel_columns
+
+def main():
+    """
+    メイン関数：コマンドライン引数を解析してExcelの空白チェックを実行する
+    """
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='Excelファイルの特定列の空白チェックツール')
+    parser.add_argument('--file', '-f', type=str, default=r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx",
+                        help='チェック対象のExcelファイルパス')
+    parser.add_argument('--sheet', '-s', type=str, default="データフレーム",
+                        help='チェック対象のシート名')
+    parser.add_argument('--columns', '-c', type=str, nargs='+',
+                        help='チェック対象の列（スペース区切り、例: C D E または 2 3 4）')
+    
+    args = parser.parse_args()
+    
+    # 列指定の処理
+    columns_to_check = []
+    if args.columns:
+        for col in args.columns:
+            # アルファベットの列指定（A, B, C...）
+            if col.isalpha():
+                # A=0, B=1, ...
+                columns_to_check.append(ord(col.upper()) - ord('A'))
+            # 数値の列指定（1, 2, 3...）
+            elif col.isdigit():
+                # 1ベースを0ベースに変換
+                columns_to_check.append(int(col) - 1)
+    else:
+        # デフォルトでC, D, E列をチェック
+        columns_to_check = [2, 3, 4]  # C列=2, D列=3, E列=4
+    
+    # 関数呼び出しでステータスIDを取得
+    status_id = check_excel_columns(args.file, args.sheet, columns_to_check)
+    
+    print(f"\n最終ステータスID: {status_id}")
+    
+    # ステータスIDに応じたメッセージ
+    if status_id == 0:
+        print("全ての列にデータが存在しています。処理を続行します。")
+    elif status_id == 1:
+        print("ユーザーエラー: 必須項目に空白があります。データを修正してください。")
+    elif status_id == 2:
+        print("必要なデータが存在しません。")
+    elif status_id == 9:
+        print("予期せぬエラーが発生しました。")
+    
+    return status_id
+
+# 直接実行時のエントリーポイント
+if __name__ == "__main__":
+    status = main()
+    sys.exit(status)  # 終了コードとしてステータスIDを返す
+#0226_mainから空白チェックするもの：PRO
