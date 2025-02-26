@@ -1,0 +1,46 @@
+import sys
+# excel_blank_checkerモジュールをインポート
+from excel_checker_class import *
+
+def check_excel_blank():
+    """
+    Excelの空白チェックを実行する関数
+    
+    Returns:
+    int: ステータスID
+    """
+    # ファイルパスとシート名を指定
+    file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+    sheet_name = "データフレーム"
+    
+    # C列、D列、E列をチェック（0ベースなので2,3,4になる）
+    columns_to_check = [2, 3, 4]
+    
+    # 関数呼び出しでステータスIDを取得
+    status_id = check_excel_columns(file_path, sheet_name, columns_to_check)
+    
+    print(f"\n最終ステータスID: {status_id}")
+    
+    # ステータスIDに応じたメッセージ
+    if status_id == 0:
+        print("全ての列にデータが存在しています。処理を続行します。")
+    elif status_id == 1:
+        print("ユーザーエラー: 必須項目に空白があります。データを修正してください。")
+    elif status_id == 2:
+        print("必要なデータが存在しません。")
+    elif status_id == 9:
+        print("予期せぬエラーが発生しました。")
+    
+    return status_id
+
+# メインの処理
+if __name__ == "__main__":
+    # 空白チェック実行
+    status = check_excel_blank()
+    
+    # 他の処理を追加する場合はここに記述
+    
+    # 終了コードとしてステータスIDを返す
+    sys.exit(status)
+
+#02/262333_Excelチェッカー★最終PROのメイン
