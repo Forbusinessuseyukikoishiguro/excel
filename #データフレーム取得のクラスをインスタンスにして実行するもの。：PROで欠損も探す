@@ -1,0 +1,133 @@
+import pandas as pd
+import sys
+import os
+
+
+class ExcelDataFrameDebugger:
+    """
+    Excelファイルからデータフレームを取得し、デバッグ情報を出力するクラス
+    """
+
+    def __init__(self, file_path):
+        """
+        コンストラクタ
+
+        Parameters:
+        file_path (str): Excelファイルのパス
+        """
+        self.file_path = file_path
+        self.excel_file = None
+        self.sheet_names = []
+
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            print(f"エラー: ファイル '{file_path}' が存在しません。", file=sys.stderr)
+        else:
+            try:
+                self.excel_file = pd.ExcelFile(file_path)
+                self.sheet_names = self.excel_file.sheet_names
+                print(f"ファイル '{file_path}' を読み込みました。")
+                print(f"利用可能なシート: {', '.join(self.sheet_names)}")
+            except Exception as e:
+                print(f"ファイル読み込みエラー: {e}", file=sys.stderr)
+
+    def get_sheet_names(self):
+        """シート名のリストを返す"""
+        return self.sheet_names
+
+    def get_dataframe(self, sheet_name):
+        """
+        指定されたシートからデータフレームを取得
+
+        Parameters:
+        sheet_name (str): シート名
+
+        Returns:
+        pandas.DataFrame: 指定されたシートのデータフレーム
+        """
+        if not self.excel_file:
+            print("Excel ファイルが正しく読み込まれていません。", file=sys.stderr)
+            return pd.DataFrame()
+
+        if sheet_name not in self.sheet_names:
+            print(f"エラー: シート '{sheet_name}' は存在しません。", file=sys.stderr)
+            print(f"利用可能なシート: {', '.join(self.sheet_names)}")
+            return pd.DataFrame()
+
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+            print(f"シート '{sheet_name}' からデータフレームを取得しました。")
+            return df
+        except Exception as e:
+            print(f"データフレーム取得エラー: {e}", file=sys.stderr)
+            return pd.DataFrame()
+
+    def debug_print_dataframe(self, df, max_rows=5):
+        """
+        データフレームのデバッグ情報を出力
+
+        Parameters:
+        df (pandas.DataFrame): デバッグ出力するデータフレーム
+        max_rows (int): 表示する最大行数
+        """
+        if df.empty:
+            print("データフレームが空です。")
+            return
+
+        print("\n===== データフレームのデバッグ情報 =====")
+        print(f"形状: {df.shape} (行数 × 列数)")
+        print(f"列名: {list(df.columns)}")
+
+        print("\n----- データ型 -----")
+        print(df.dtypes)
+
+        print(f"\n----- 先頭 {max_rows} 行 -----")
+        print(df.head(max_rows))
+
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+        if len(numeric_cols) > 0:
+            print("\n----- 数値データの基本統計量 -----")
+            print(df[numeric_cols].describe())
+
+        print("\n----- 欠損値の数 -----")
+        null_counts = df.isnull().sum()
+        print(
+            null_counts[null_counts > 0]
+            if any(null_counts > 0)
+            else "欠損値はありません"
+        )
+
+        print("\n----- メモリ使用量 -----")
+        print(f"{df.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
+
+
+# 実際にクラスをインスタンス化して使用
+if __name__ == "__main__":
+    file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+
+    # インスタンス作成
+    excel_debugger = ExcelDataFrameDebugger(file_path)
+
+    # シート名一覧を取得
+    sheet_names = excel_debugger.get_sheet_names()
+
+    if "アウトプット" in sheet_names:
+        # アウトプットシートのデータフレームを取得
+        df_output = excel_debugger.get_dataframe("データフレーム")
+
+        # デバッグ情報を出力
+        excel_debugger.debug_print_dataframe(df_output)
+    else:
+        print("「アウトプット」シートが見つかりませんでした。")
+        print("利用可能なシートから選択してください:")
+        for i, name in enumerate(sheet_names, 1):
+            print(f"{i}. {name}")
+
+        # 例として最初のシートを使用
+        if sheet_names:
+            first_sheet = sheet_names[0]
+            print(f"\n最初のシート '{first_sheet}' を使用します。")
+            df_first = excel_debugger.get_dataframe(first_sheet)
+            excel_debugger.debug_print_dataframe(df_first)
+
+#データフレーム取得のクラスをインスタンスにして実行するもの。：PROで欠損も探す
