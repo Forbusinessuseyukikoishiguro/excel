@@ -1,0 +1,99 @@
+import pandas as pd
+import sys
+from excel_checker_class import *
+
+
+def filter_and_check_excel():
+    """
+    TORICOに値があるデータでフィルタリングし、デバッグプリントした後に
+    指定した列の空白チェックを実行する関数
+
+    Returns:
+    int: ステータスID
+    """
+    # ファイルパスとシート名を指定
+    file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+    sheet_name = "データフレーム"
+
+    try:
+        # Excel読み込み
+        print(f"ファイル '{file_path}' からデータを読み込みます...")
+        df_original = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        # データの基本情報を出力
+        print("\n===== 元のデータフレーム情報 =====")
+        print(f"行数: {len(df_original)}")
+        print(f"列数: {len(df_original.columns)}")
+        print(
+            f"列名: {[str(col) for col in df_original.columns]}"
+        )  # 整数を文字列に変換
+
+        # "TORICO"列に値があるデータでフィルタリング
+        # "TORICO"列が最初の列と仮定（A列）
+        torico_column = df_original.columns[0]  # 最初の列を"TORICO"列と仮定
+
+        # フィルタリング: TORICO列が空でないものを抽出
+        df_filtered = df_original[
+            df_original[torico_column].notna()
+            & (df_original[torico_column].astype(str).str.strip() != "")
+        ]
+
+        # フィルタリング結果のデバッグプリント
+        print("\n===== TORICOに値があるデータ =====")
+        print(f"フィルタリング後の行数: {len(df_filtered)}")
+        print("\n----- フィルタリング後のデータ -----")
+        print(df_filtered)
+
+        # C, D, E列の空白チェック (0ベースなので2, 3, 4)
+        columns_to_check = [2, 3, 4]
+
+        # 実際の列名を表示（文字列に変換して結合）
+        column_names = [
+            str(df_filtered.columns[i])
+            for i in columns_to_check
+            if i < len(df_filtered.columns)
+        ]
+        print(f"\n以下の列の空白チェックを実行します: {', '.join(column_names)}")
+
+        # ExcelDataFrameDebuggerのインスタンス作成
+        debugger = ExcelDataFrameDebugger(file_path)
+
+        # 空白チェック実行
+        status_id, empty_cells = debugger.check_empty_cells(
+            df_filtered, columns_to_check
+        )
+
+        # 結果を表示
+        debugger.display_empty_cells_report(status_id, empty_cells)
+
+        print(f"\n最終ステータスID: {status_id}")
+
+        # ステータスIDに応じたメッセージ
+        if status_id == 0:
+            print("全ての列にデータが存在しています。処理を続行します。")
+        elif status_id == 1:
+            print(
+                "ユーザーエラー: 必須項目に空白があります。データを修正してください。"
+            )
+        elif status_id == 2:
+            print("必要なデータが存在しません。")
+        elif status_id == 9:
+            print("予期せぬエラーが発生しました。")
+
+        return status_id
+
+    except Exception as e:
+        print(f"エラーが発生しました: {e}", file=sys.stderr)
+        return 9  # 予期せぬエラー
+
+
+# メインの処理
+if __name__ == "__main__":
+    # TORICOデータのフィルタリングと空白チェック実行
+    status = filter_and_check_excel()
+
+    # 終了コードとしてステータスIDを返す
+    sys.exit(status)
+
+
+#TORICOでデータしぼってから、空白列チェック：PROOK
