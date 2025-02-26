@@ -1,0 +1,200 @@
+import pandas as pd
+import sys
+import os
+
+
+class ExcelDataFrameDebugger:
+    """
+    Excelファイルからデータフレームを取得し、特定の列の空白をチェックするクラス
+    """
+
+    def __init__(self, file_path):
+        """
+        コンストラクタ
+
+        Parameters:
+        file_path (str): Excelファイルのパス
+        """
+        self.file_path = file_path
+        self.excel_file = None
+        self.sheet_names = []
+
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            print(f"エラー: ファイル '{file_path}' が存在しません。", file=sys.stderr)
+        else:
+            try:
+                self.excel_file = pd.ExcelFile(file_path)
+                self.sheet_names = self.excel_file.sheet_names
+                print(f"ファイル '{file_path}' を読み込みました。")
+                print(f"利用可能なシート: {', '.join(self.sheet_names)}")
+            except Exception as e:
+                print(f"ファイル読み込みエラー: {e}", file=sys.stderr)
+
+    def get_dataframe(self, sheet_name):
+        """
+        指定されたシートからデータフレームを取得
+
+        Parameters:
+        sheet_name (str): シート名
+
+        Returns:
+        pandas.DataFrame: 指定されたシートのデータフレーム
+        """
+        if not self.excel_file:
+            print("Excel ファイルが正しく読み込まれていません。", file=sys.stderr)
+            return pd.DataFrame()
+
+        if sheet_name not in self.sheet_names:
+            print(f"エラー: シート '{sheet_name}' は存在しません。", file=sys.stderr)
+            print(f"利用可能なシート: {', '.join(self.sheet_names)}")
+            return pd.DataFrame()
+
+        try:
+            df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+            print(f"シート '{sheet_name}' からデータフレームを取得しました。")
+            return df
+        except Exception as e:
+            print(f"データフレーム取得エラー: {e}", file=sys.stderr)
+            return pd.DataFrame()
+
+    def check_empty_cells(self, df, columns_to_check):
+        """
+        指定した列の空白セルをチェック
+
+        Parameters:
+        df (pandas.DataFrame): チェック対象のデータフレーム
+        columns_to_check (list): チェック対象の列リスト(0ベースのインデックスまたは列名)
+
+        Returns:
+        tuple: (ステータスID, 空白セルの情報)
+        """
+        try:
+            if df.empty:
+                print("データフレームが空です。")
+                return 2, {}  # ステータスID 2: 存在しない
+
+            # 各列の実際の列名を取得
+            column_names = []
+            for col in columns_to_check:
+                if isinstance(col, int):
+                    if 0 <= col < len(df.columns):
+                        column_names.append(df.columns[col])
+                    else:
+                        print(f"警告: インデックス {col} は範囲外です")
+                else:
+                    if col in df.columns:
+                        column_names.append(col)
+                    else:
+                        print(f"警告: 列 '{col}' はデータフレームに存在しません")
+
+            if not column_names:
+                print("チェック対象の列がありません")
+                return 2, {}  # ステータスID 2: 存在しない
+
+            # 結果格納用の辞書
+            empty_cells = {
+                'total_cells': 0,
+                'empty_by_column': {},
+                'empty_cell_locations': []
+            }
+
+            # 各列の空白セルをチェック
+            for col_name in column_names:
+                # 空白セルのインデックスを取得（NaN、空文字列、空白文字だけの場合を含む）
+                empty_mask = df[col_name].isnull() | (df[col_name].astype(str).str.strip() == '')
+                empty_indices = df.index[empty_mask].tolist()
+                
+                # 列の結果を格納
+                empty_cells['empty_by_column'][col_name] = len(empty_indices)
+                empty_cells['total_cells'] += len(empty_indices)
+                
+                # 空白セルの位置情報
+                for idx in empty_indices:
+                    col_letter = chr(65 + df.columns.get_loc(col_name))  # 0→A, 1→B, ...
+                    excel_row = idx + 2  # DataFrameインデックス→Excel行番号（ヘッダー行 + 1）
+                    empty_cells['empty_cell_locations'].append({
+                        'column': col_name,
+                        'column_letter': col_letter,
+                        'row_index': idx,
+                        'excel_row': excel_row,
+                        'cell_address': f"{col_letter}{excel_row}"
+                    })
+
+            # ステータスIDの決定
+            if empty_cells['total_cells'] == 0:
+                status_id = 0  # 全て存在している
+            else:
+                status_id = 1  # 正常終了（※継続処理）
+
+            return status_id, empty_cells
+            
+        except Exception as e:
+            print(f"予期せぬエラーが発生しました: {e}", file=sys.stderr)
+            return 9, {}  # ステータスID 9: 予期せぬエラー
+
+    def display_empty_cells_report(self, status_id, empty_cells):
+        """
+        空白セルのレポートを表示
+
+        Parameters:
+        status_id (int): ステータスID
+        empty_cells (dict): check_empty_cells()の戻り値
+
+        Returns:
+        int: ステータスID
+        """
+        # ステータスIDの説明
+        status_messages = {
+            0: "ステータス: 0 - 全て存在している",
+            1: "ステータス: 1 - 正常終了 ※継続処理",
+            2: "ステータス: 2 - 存在しない ※チェック自体は全発電所分実施",
+            9: "ステータス: 9 - 予期せぬエラー"
+        }
+        
+        print(f"\n{status_messages.get(status_id, f'ステータス: {status_id} - 不明なステータス')}")
+        
+        if status_id in [0, 1]:
+            if not empty_cells:
+                return status_id
+                
+            print("\n===== 空白セル検出レポート =====")
+            print(f"検出された空白セル総数: {empty_cells['total_cells']}")
+            
+            if empty_cells['total_cells'] > 0:
+                print("\n----- 列ごとの空白セル数 -----")
+                for col, count in empty_cells['empty_by_column'].items():
+                    print(f"列 '{col}': {count} セル")
+                
+                print("\n----- 空白セルの位置 -----")
+                for location in empty_cells['empty_cell_locations']:
+                    print(f"セル {location['cell_address']}: 列={location['column']} 行={location['excel_row']}")
+            else:
+                print("チェック対象の列に空白セルはありませんでした。")
+                
+        return status_id
+
+
+if __name__ == "__main__":
+    file_path = r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"
+    sheet_name = "データフレーム"
+    
+    # インスタンス作成
+    excel_debugger = ExcelDataFrameDebugger(file_path)
+    
+    # データフレームを取得
+    df = excel_debugger.get_dataframe(sheet_name)
+    
+    if not df.empty:
+        # C, D, E列をチェック（インデックスは0始まりなので、C列=2, D列=3, E列=4）
+        columns_to_check = [2, 3, 4]  # C, D, E列のインデックス
+        
+        # 空白セルをチェックしてステータスIDを取得
+        status_id, empty_cells = excel_debugger.check_empty_cells(df, columns_to_check)
+        
+        # レポート表示
+        status_id = excel_debugger.display_empty_cells_report(status_id, empty_cells)
+        
+        print(f"\n最終ステータスID: {status_id}")
+        
+#02256_ステータスNO返却する空白セル検出レポートPRO
