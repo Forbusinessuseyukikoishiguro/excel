@@ -1,0 +1,138 @@
+# config_validator.py
+
+import json
+import sys
+import os
+
+# 両方のチェッカーモジュールをインポート
+from excel_empty_checker import check_excel_empty_cells_with_header_row, display_empty_cell_check_results
+from excel_type_checker import check_excel_cell_types, display_type_check_results
+
+def load_config(config_file):
+    """
+    設定ファイルを読み込む関数
+    
+    Parameters:
+    -----------
+    config_file : str
+        設定ファイルのパス
+    
+    Returns:
+    --------
+    dict
+        設定内容
+    """
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        return config
+    except Exception as e:
+        print(f"設定ファイルの読み込みエラー: {e}")
+        return None
+
+def main(config_file):
+    """
+    設定ファイルを使用してExcelファイルの検証を実行するメイン関数
+    
+    Parameters:
+    -----------
+    config_file : str
+        設定ファイルのパス
+    
+    Returns:
+    --------
+    int
+        ステータスコード
+    """
+    # 設定ファイルの読み込み
+    config = load_config(config_file)
+    if not config:
+        return 9
+    
+    # 必須設定の確認
+    required_keys = ['file_path', 'sheet_name']
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        print(f"設定ファイルに必須キーがありません: {', '.join(missing_keys)}")
+        return 9
+    
+    # デフォルト値の設定
+    header_row = config.get('header_row', 1)  # デフォルトは2行目（インデックス1）
+    
+    # ファイル情報を表示
+    print(f"検証ファイル: {config['file_path']}")
+    print(f"シート名: {config['sheet_name']}")
+    print(f"ヘッダー行: {header_row+1}行目")
+    
+    status = 0
+    
+    # 空白チェック
+    if 'empty_check_columns' in config and config['empty_check_columns']:
+        empty_check_columns = config['empty_check_columns']
+        print(f"\n空白チェック対象列: {', '.join(empty_check_columns)}")
+        
+        # 空白チェック実行
+        empty_result = check_excel_empty_cells_with_header_row(
+            file_path=config['file_path'],
+            sheet_name=config['sheet_name'],
+            column_names=empty_check_columns,
+            header_row=header_row
+        )
+        
+        # 結果表示
+        empty_status = display_empty_cell_check_results(empty_result)
+        
+        # ステータスを更新
+        if empty_status > status:
+            status = empty_status
+    
+    # 型チェック
+    if 'type_check' in config and config['type_check']:
+        type_check_dict = config['type_check']
+        
+        print(f"\n型チェック定義:")
+        for col, col_type in type_check_dict.items():
+            print(f"  列 '{col}': {col_type}")
+        
+        # 型チェック実行
+        type_result = check_excel_cell_types(
+            file_path=config['file_path'],
+            sheet_name=config['sheet_name'],
+            column_types=type_check_dict,
+            header_row=header_row
+        )
+        
+        # 結果表示
+        type_status = display_type_check_results(type_result)
+        
+        # ステータスを更新
+        if type_status > status:
+            status = type_status
+    
+    # 総合結果
+    print("\n===== 検証結果サマリー =====")
+    if status == 0:
+        print("✅ 全てのチェックに合格しました")
+    elif status == 1:
+        print("⚠️ 検証エラーがあります")
+    else:
+        print("❌ 検証プロセスでエラーが発生しました")
+    
+    return status
+
+if __name__ == "__main__":
+    # コマンドライン引数からの設定ファイルパスの取得
+    if len(sys.argv) < 2:
+        print("使用方法: python config_validator.py 設定ファイル.json")
+        sys.exit(1)
+    
+    config_file = sys.argv[1]
+    if not os.path.exists(config_file):
+        print(f"エラー: 設定ファイル '{config_file}' が見つかりません")
+        sys.exit(1)
+    
+    # メイン関数実行
+    status = main(config_file)
+    
+    # 終了コードとしてステータスを返す
+    sys.exit(status)
