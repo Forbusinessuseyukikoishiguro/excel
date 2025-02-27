@@ -1,0 +1,287 @@
+import csv
+import os
+import sys
+
+def validate_row_sums_until_blank(file_path, reference_col=0, start_col=1, header_row=None):
+    """
+    CSVファイルの各行について、A列の値と他の列（空白が来るまで）の合計を比較する
+    
+    Parameters:
+    -----------
+    file_path : str
+        CSVファイルのパス
+    reference_col : int, default=0
+        比較対象の基準列のインデックス（デフォルトはA列=0）
+    start_col : int, default=1
+        合計を開始する列のインデックス（デフォルトはB列=1）
+    header_row : int, default=None
+        ヘッダー行のインデックス（Noneの場合はヘッダーなし）
+    
+    Returns:
+    --------
+    tuple
+        (各行のエラー情報, エラー件数, 総行数)
+    """
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            print(f"エラー: ファイル '{file_path}' が見つかりません")
+            return [], 0, 0
+        
+        # CSVファイルを読み込む
+        data = []
+        with open(file_path, 'r', newline='', encoding='utf-8-sig') as csvfile:
+            csv_reader = csv.reader(csvfile)
+            for row in csv_reader:
+                data.append(row)
+        
+        # データが空の場合
+        if not data:
+            print(f"警告: ファイル '{file_path}' にデータがありません")
+            return [], 0, 0
+        
+        # ヘッダー行の処理
+        header = None
+        if header_row is not None:
+            if header_row < len(data):
+                header = data[header_row]
+                # ヘッダー行を除いたデータ
+                if header_row == 0:
+                    data = data[1:]
+                else:
+                    data = data[:header_row] + data[header_row+1:]
+            else:
+                print(f"警告: 指定されたヘッダー行 {header_row+1} はデータの範囲外です")
+        
+        # 列名または列インデックスの表示
+        if header:
+            for i, col_name in enumerate(header):
+                print(f"列{chr(65+i)} ({i+1}列目): {col_name}")
+        else:
+            print(f"各列をインデックスで参照します（A=1列目, B=2列目, ...）")
+        
+        # 設定情報の表示
+        ref_col_letter = chr(65 + reference_col)
+        start_col_letter = chr(65 + start_col)
+        
+        print(f"\n=== 検証設定 ===")
+        print(f"比較基準列: {ref_col_letter}列 ({reference_col+1}列目)")
+        print(f"合計開始列: {start_col_letter}列 ({start_col+1}列目)")
+        print(f"合計方法: 開始列から空白セルが来るまでの値を合計")
+        
+        # 検証結果を格納するリスト
+        errors = []
+        row_count = 0
+        
+        # 各行を検証
+        for row_idx, row in enumerate(data):
+            row_count += 1
+            excel_row = row_idx + 1
+            if header_row is not None and header_row <= row_idx:
+                excel_row += 1
+            
+            # 空の行はスキップ
+            if not row or all(cell.strip() == '' for cell in row):
+                continue
+            
+            # 参照列が範囲外の場合はスキップ
+            if reference_col >= len(row):
+                errors.append({
+                    'row_index': row_idx,
+                    'excel_row': excel_row,
+                    'error_type': '基準列が存在しない',
+                    'reference_col': reference_col,
+                    'reference_value': None,
+                    'sum_value': None,
+                    'difference': None,
+                    'row_data': row
+                })
+                continue
+            
+            # 参照値を取得（数値変換を試みる）
+            try:
+                reference_value = float(row[reference_col]) if row[reference_col].strip() else 0
+            except ValueError:
+                # 数値に変換できない場合
+                errors.append({
+                    'row_index': row_idx,
+                    'excel_row': excel_row,
+                    'error_type': '基準列が数値でない',
+                    'reference_col': reference_col,
+                    'reference_value': row[reference_col],
+                    'sum_value': None,
+                    'difference': None,
+                    'row_data': row
+                })
+                continue
+            
+            # 合計対象の列を特定（開始列から空白が来るまで）
+            sum_cols = []
+            sum_values = []
+            sum_details = {}
+            
+            for col_idx in range(start_col, len(row)):
+                # 空白セルかチェック
+                if col_idx >= len(row) or not row[col_idx].strip():
+                    break
+                
+                try:
+                    val = float(row[col_idx])
+                    sum_cols.append(col_idx)
+                    sum_values.append(val)
+                    sum_details[chr(65 + col_idx)] = val
+                except ValueError:
+                    # 数値に変換できない場合はエラー
+                    errors.append({
+                        'row_index': row_idx,
+                        'excel_row': excel_row,
+                        'error_type': '合計対象列が数値でない',
+                        'col_index': col_idx,
+                        'col_letter': chr(65 + col_idx),
+                        'value': row[col_idx],
+                        'reference_value': reference_value,
+                        'row_data': row
+                    })
+            
+            # 合計を計算
+            sum_value = sum(sum_values)
+            
+            # 差分を計算
+            difference = reference_value - sum_value
+            
+            # A列の値と合計値が一致するかチェック
+            if reference_value != sum_value:
+                errors.append({
+                    'row_index': row_idx,
+                    'excel_row': excel_row,
+                    'error_type': '値が不一致',
+                    'reference_col': reference_col,
+                    'reference_col_letter': ref_col_letter,
+                    'reference_value': reference_value,
+                    'sum_value': sum_value,
+                    'difference': difference,
+                    'sum_cols': sum_cols,
+                    'sum_cols_letters': [chr(65 + col_idx) for col_idx in sum_cols],
+                    'sum_details': sum_details,
+                    'row_data': row
+                })
+        
+        # 結果を表示
+        error_count = len(errors)
+        
+        print(f"\n=== 検証結果 ===")
+        print(f"総行数: {row_count}行")
+        print(f"エラー行数: {error_count}行")
+        
+        if error_count > 0:
+            # エラータイプごとに集計
+            error_types = {}
+            for info in errors:
+                etype = info['error_type']
+                error_types[etype] = error_types.get(etype, 0) + 1
+            
+            print("\n=== エラータイプ別件数 ===")
+            for etype, count in error_types.items():
+                print(f"{etype}: {count}件")
+            
+            # 値が不一致のエラーのみ詳細表示
+            value_mismatch_errors = [e for e in errors if e['error_type'] == '値が不一致']
+            if value_mismatch_errors:
+                print(f"\n=== 値不一致の詳細（最大10件） ===")
+                for i, info in enumerate(value_mismatch_errors[:10]):
+                    print(f"行{info['excel_row']}:")
+                    print(f"  {info['reference_col_letter']}列の値: {info['reference_value']}")
+                    print(f"  合計値: {info['sum_value']}")
+                    print(f"  差分: {info['difference']}")
+                    print(f"  合計対象の列: {', '.join(info['sum_cols_letters'])}")
+                    print(f"  合計対象の値:")
+                    for col, val in info['sum_details'].items():
+                        print(f"    {col}列: {val}")
+                    print("")
+                
+                if len(value_mismatch_errors) > 10:
+                    print(f"... 他 {len(value_mismatch_errors) - 10} 件")
+        
+        return errors, error_count, row_count
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"予期せぬエラーが発生しました: {e}")
+        return [], 0, 0
+
+# CSV出力関数
+def export_errors_to_csv(errors, output_file):
+    """エラー情報をCSVファイルに出力する"""
+    try:
+        with open(output_file, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            fieldnames = ['行番号', 'エラータイプ', '基準値', '合計値', '差分', '合計対象列', '詳細']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for info in errors:
+                if info['error_type'] == '値が不一致':
+                    details = ', '.join([f"{col}:{val}" for col, val in info['sum_details'].items()])
+                    writer.writerow({
+                        '行番号': info['excel_row'],
+                        'エラータイプ': info['error_type'],
+                        '基準値': info['reference_value'],
+                        '合計値': info['sum_value'],
+                        '差分': info['difference'],
+                        '合計対象列': ', '.join(info['sum_cols_letters']),
+                        '詳細': details
+                    })
+                else:
+                    writer.writerow({
+                        '行番号': info['excel_row'],
+                        'エラータイプ': info['error_type'],
+                        '基準値': info.get('reference_value', ''),
+                        '合計値': '',
+                        '差分': '',
+                        '合計対象列': '',
+                        '詳細': ''
+                    })
+        
+        print(f"\nエラーリストを '{output_file}' に出力しました")
+        return True
+    except Exception as e:
+        print(f"出力ファイル作成エラー: {e}")
+        return False
+
+# コマンドライン実行用の関数
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='CSVファイルの各行について、A列の値と他の列（空白が来るまで）の合計を比較します')
+    parser.add_argument('file_path', help='検証するCSVファイルのパス')
+    parser.add_argument('--reference-col', type=int, default=0, 
+                      help='比較基準列のインデックス（0始まり、デフォルトは0=A列）')
+    parser.add_argument('--start-col', type=int, default=1,
+                      help='合計を開始する列のインデックス（0始まり、デフォルトは1=B列）')
+    parser.add_argument('--header-row', type=int, 
+                      help='ヘッダー行のインデックス（0始まり、指定しない場合はヘッダーなし）')
+    parser.add_argument('--output-file', help='エラーリストをCSV形式で出力するファイルパス')
+    
+    args = parser.parse_args()
+    
+    # 検証実行
+    errors, error_count, row_count = validate_row_sums_until_blank(
+        args.file_path,
+        args.reference_col,
+        args.start_col,
+        args.header_row
+    )
+    
+    # エラーリストを出力（オプション）
+    if args.output_file and errors:
+        export_errors_to_csv(errors, args.output_file)
+    
+    # 終了コード: 0=エラーなし, 1=エラーあり, 2=システムエラー
+    if error_count > 0:
+        return 1
+    else:
+        return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
