@@ -1,0 +1,25 @@
+# Excelファイルを読み込み
+df, status, message = read_excel_flexible("data.xlsx", header_row=1)
+
+# 型チェック定義
+column_types = {
+    "商品コード": "alphanumeric8",  # 半角英数字8桁以内
+    "商品名": "string",
+    "価格": "number"
+}
+
+# 型チェック実行
+type_status, type_result = check_column_types_flexible(df, column_types)
+
+# 結果確認
+if type_status == 0:
+    print("すべての列が指定された型と一致しています")
+else:
+    print(f"型エラーが {type_result['total_errors']} 個あります")
+    
+    # エラーがある場合は詳細を表示
+    for error in type_result["error_locations"]:
+        if error["expected_type"] == "alphanumeric8":
+            print(f"セル {error['cell_ref']}: 値「{error['actual_value']}」は半角英数字8桁以内ではありません")
+        else:
+            print(f"セル {error['cell_ref']}: 値「{error['actual_value']}」は{error['expected_type']}型ではありません")
