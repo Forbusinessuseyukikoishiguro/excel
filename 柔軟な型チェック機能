@@ -1,0 +1,416 @@
+# improved_type_checker.py
+# 柔軟な型チェック機能
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import re
+
+# ステータスコード
+STATUS_OK = 0               # 正常終了
+STATUS_VALIDATION_ERROR = 1 # 検証エラー
+STATUS_SYSTEM_ERROR = 9     # システムエラー
+
+def get_column_letter(col_idx):
+    """列インデックスからExcel列文字（A, B, ... Z, AA, AB, ...）を取得"""
+    result = ""
+    temp = col_idx
+    while True:
+        remainder = temp % 26
+        result = chr(65 + remainder) + result
+        temp = temp // 26 - 1
+        if temp < 0:
+            break
+    return result
+
+# 型チェック関数
+def is_integer(value):
+    """値が整数型かどうかをチェック"""
+    if isinstance(value, (int, np.int64, np.int32)) and not isinstance(value, bool):
+        return True
+    try:
+        val_str = str(value).strip()
+        val_float = float(val_str)
+        return val_float.is_integer()
+    except (ValueError, TypeError):
+        return False
+
+def is_float(value):
+    """値が浮動小数点型かどうかをチェック"""
+    if isinstance(value, (float, np.float64, np.float32)):
+        return True
+    try:
+        float(str(value).strip())
+        return True
+    except (ValueError, TypeError):
+        return False
+
+def is_number(value):
+    """値が数値型（整数または浮動小数点数）かどうかをチェック"""
+    return is_integer(value) or is_float(value)
+
+def is_date(value):
+    """値が日付型かどうかをチェック"""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return True
+    
+    try:
+        value_str = str(value).strip()
+        date_formats = [
+            '%Y/%m/%d', '%Y-%m-%d', '%Y年%m月%d日',
+            '%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M:%S',
+            '%m/%d/%Y', '%d/%m/%Y',  # 追加の日付形式
+            '%d-%m-%Y', '%m-%d-%Y'
+        ]
+        
+        for fmt in date_formats:
+            try:
+                datetime.strptime(value_str, fmt)
+                return True
+            except ValueError:
+                continue
+    except:
+        pass
+    
+    # 日付っぽい文字列パターンをチェック
+    date_patterns = [
+        r'^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$',  # YYYY/MM/DD, MM/DD/YYYY など
+        r'^\d{1,4}年\d{1,2}月\d{1,2}日$',     # YYYY年MM月DD日
+    ]
+    
+    for pattern in date_patterns:
+        if re.match(pattern, str(value).strip()):
+            return True
+    
+    return False
+
+def is_time(value):
+    """値が時間型かどうかをチェック"""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return True
+    
+    try:
+        value_str = str(value).strip()
+        time_formats = [
+            '%H:%M', '%H:%M:%S', '%I:%M %p', '%I:%M:%S %p'
+        ]
+        
+        for fmt in time_formats:
+            try:
+                datetime.strptime(value_str, fmt)
+                return True
+            except ValueError:
+                continue
+    except:
+        pass
+    
+    # 時間っぽい文字列パターンをチェック
+    time_patterns = [
+        r'^\d{1,2}:\d{1,2}(:\d{1,2})?$',        # HH:MM, HH:MM:SS
+        r'^\d{1,2}時\d{1,2}分(\d{1,2}秒)?$',     # HH時MM分SS秒
+    ]
+    
+    for pattern in time_patterns:
+        if re.match(pattern, str(value).strip()):
+            return True
+    
+    return False
+
+def is_datetime(value):
+    """値が日時型かどうかをチェック"""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return True
+    
+    try:
+        value_str = str(value).strip()
+        datetime_formats = [
+            '%Y/%m/%d %H:%M', '%Y-%m-%d %H:%M',
+            '%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M:%S',
+            '%m/%d/%Y %H:%M', '%d/%m/%Y %H:%M',
+            '%m/%d/%Y %H:%M:%S', '%d/%m/%Y %H:%M:%S'
+        ]
+        
+        for fmt in datetime_formats:
+            try:
+                datetime.strptime(value_str, fmt)
+                return True
+            except ValueError:
+                continue
+    except:
+        pass
+    
+    # 日時っぽい文字列パターンをチェック
+    if re.search(r'\d{1,4}[/-]\d{1,2}[/-]\d{1,4}.*\d{1,2}:\d{1,2}', str(value).strip()):
+        return True
+    
+    return False
+
+def is_boolean(value):
+    """値が論理型かどうかをチェック"""
+    if isinstance(value, (bool, np.bool_)):
+        return True
+    
+    try:
+        value_str = str(value).strip().lower()
+        return value_str in ['true', 'false', '1', '0', 'yes', 'no', 'はい', 'いいえ', 'y', 'n', 't', 'f']
+    except:
+        return False
+
+def is_email(value):
+    """値がメールアドレス形式かどうかをチェック"""
+    try:
+        pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+        return bool(re.match(pattern, str(value).strip()))
+    except:
+        return False
+
+def is_phone(value):
+    """値が電話番号形式かどうかをチェック"""
+    try:
+        # 電話番号っぽいパターンをチェック
+        patterns = [
+            r'^\d{2,4}-\d{2,4}-\d{3,4}$',  # 03-1234-5678
+            r'^\(\d{2,4}\)\d{2,4}-\d{3,4}$',  # (03)1234-5678
+            r'^\+\d{1,3}-\d{1,4}-\d{2,4}-\d{3,4}$',  # +81-3-1234-5678
+            r'^\d{10,11}$'  # 09012345678
+        ]
+        
+        value_str = str(value).strip()
+        
+        for pattern in patterns:
+            if re.match(pattern, value_str):
+                return True
+        
+        # 数字だけ抽出して長さをチェック
+        digits = re.sub(r'\D', '', value_str)
+        return 9 <= len(digits) <= 15
+    except:
+        return False
+
+def is_postal_code(value):
+    """値が郵便番号形式かどうかをチェック"""
+    try:
+        # 日本の郵便番号: 123-4567 or 1234567
+        jp_patterns = [
+            r'^\d{3}-\d{4}$',
+            r'^\d{7}$'
+        ]
+        
+        value_str = str(value).strip()
+        
+        for pattern in jp_patterns:
+            if re.match(pattern, value_str):
+                return True
+        
+        return False
+    except:
+        return False
+
+def check_column_types_flexible(df, column_types_dict):
+    """
+    指定した列のデータ型を柔軟にチェックする
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        チェック対象のデータフレーム
+    column_types_dict : dict
+        列名と期待される型のマッピング (例: {"列A": "int", "列B": "string"})
+    
+    Returns:
+    --------
+    tuple
+        (ステータスコード, 結果辞書)
+    """
+    if df is None:
+        return STATUS_SYSTEM_ERROR, {"message": "データフレームがNoneです"}
+    
+    try:
+        result = {
+            "total_errors": 0,
+            "errors_by_column": {},
+            "error_locations": [],
+            "message": ""
+        }
+        
+        # 型指定の正規化マッピング
+        type_mapping = {
+            # 文字列型
+            "str": "string", "text": "string", "string": "string", "char": "string", 
+            "s": "string", "txt": "string", "文字列": "string", "文字": "string",
+            
+            # 整数型
+            "int": "integer", "integer": "integer", "long": "integer", "整数": "integer",
+            "i": "integer", "整数値": "integer", "int32": "integer", "int64": "integer",
+            
+            # 浮動小数点型
+            "float": "float", "double": "float", "real": "float", "decimal": "float",
+            "f": "float", "浮動小数点": "float", "小数": "float", "小数点": "float",
+            
+            # 数値型（整数または浮動小数点）
+            "number": "number", "num": "number", "numeric": "number", "数値": "number",
+            "n": "number", "数字": "number",
+            
+            # 日付型
+            "date": "date", "day": "date", "dt": "date", "日付": "date",
+            "d": "date", "ymd": "date", "mdy": "date", "dmy": "date",
+            
+            # 時間型
+            "time": "time", "t": "time", "時間": "time", "hm": "time", "hms": "time",
+            
+            # 日時型
+            "datetime": "datetime", "timestamp": "datetime", "日時": "datetime",
+            "dt": "datetime", "ts": "datetime",
+            
+            # 論理型
+            "bool": "boolean", "boolean": "boolean", "logical": "boolean", "論理": "boolean",
+            "b": "boolean", "flag": "boolean", "フラグ": "boolean", "yn": "boolean",
+            
+            # メールアドレス型
+            "email": "email", "mail": "email", "メール": "email", "メアド": "email",
+            "e-mail": "email", "メールアドレス": "email",
+            
+            # 電話番号型
+            "phone": "phone", "tel": "phone", "telephone": "phone", "携帯": "phone",
+            "電話": "phone", "電話番号": "phone", "mobile": "phone",
+            
+            # 郵便番号型
+            "postal": "postal_code", "zip": "postal_code", "zipcode": "postal_code",
+            "postcode": "postal_code", "郵便番号": "postal_code", "郵便": "postal_code"
+        }
+        
+        # 型チェック関数マッピング
+        type_checkers = {
+            "integer": is_integer,
+            "float": is_float,
+            "number": is_number,
+            "date": is_date,
+            "time": is_time,
+            "datetime": is_datetime,
+            "string": lambda x: True,  # 文字列型は常にOK
+            "boolean": is_boolean,
+            "email": is_email,
+            "phone": is_phone,
+            "postal_code": is_postal_code
+        }
+        
+        # チェック対象の列と型を正規化
+        normalized_types = {}
+        for col, type_str in column_types_dict.items():
+            # 型指定を小文字に変換
+            type_lower = type_str.lower()
+            
+            # 型指定を正規化
+            if type_lower in type_mapping:
+                normalized_type = type_mapping[type_lower]
+                normalized_types[col] = normalized_type
+            else:
+                print(f"警告: 未知の型指定 '{type_str}' が列 '{col}' に指定されました。文字列型として扱います。")
+                normalized_types[col] = "string"
+        
+        # 列ごとに型チェック
+        for col_name, normalized_type in normalized_types.items():
+            if col_name not in df.columns:
+                print(f"警告: 列 '{col_name}' はデータフレームに存在しません")
+                continue
+            
+            # 型チェック関数を取得
+            type_checker = type_checkers[normalized_type]
+            
+            # 列インデックスを取得
+            col_idx = df.columns.get_loc(col_name)
+            
+            # 結果辞書を初期化
+            result["errors_by_column"][col_name] = 0
+            
+            # NaNでない各値について型チェック
+            for row_idx, value in enumerate(df[col_name]):
+                if pd.isna(value):
+                    continue  # 空白セルはスキップ
+                
+                if not type_checker(value):
+                    # 型エラーを記録
+                    result["errors_by_column"][col_name] += 1
+                    result["total_errors"] += 1
+                    
+                    excel_row = row_idx + 3  # 2行目ヘッダーなので、データは3行目から始まる
+                    excel_col = get_column_letter(col_idx)
+                    
+                    result["error_locations"].append({
+                        "column": col_name,
+                        "row_index": row_idx,
+                        "excel_row": excel_row,
+                        "excel_column": excel_col,
+                        "cell_ref": f"{excel_col}{excel_row}",
+                        "expected_type": normalized_type,
+                        "actual_value": str(value),
+                        "actual_type": type(value).__name__
+                    })
+        
+        # デバッグ情報の出力
+        print(f"\n=== 型チェック結果 ===")
+        print(f"チェック対象列: {len(normalized_types)}列")
+        
+        # 型のマッピング情報を表示
+        print("\n型マッピング:")
+        for col, original_type in column_types_dict.items():
+            if col in normalized_types:
+                print(f"  列 '{col}': 指定型 '{original_type}' → 正規化型 '{normalized_types[col]}'")
+        
+        print(f"\n型エラーの総数: {result['total_errors']}個")
+        
+        if result["total_errors"] > 0:
+            print("\n列ごとの型エラー数:")
+            for col, count in result["errors_by_column"].items():
+                if count > 0:
+                    print(f"  列 '{col}' (期待型: {normalized_types[col]}): {count}個")
+            
+            print("\n型エラーの位置:")
+            for loc in result["error_locations"]:
+                print(f"  セル {loc['cell_ref']} (行{loc['excel_row']}, 列{loc['excel_column']}): "
+                      f"値 '{loc['actual_value']}', 実際の型 '{loc['actual_type']}', 期待型 '{loc['expected_type']}'")
+            
+            result["message"] = f"合計 {result['total_errors']} 個の型エラーが見つかりました"
+            return STATUS_VALIDATION_ERROR, result
+        else:
+            print("型エラーは見つかりませんでした")
+            result["message"] = "型エラーは見つかりませんでした"
+            return STATUS_OK, result
+    
+    except Exception as e:
+        print(f"型チェック中にエラーが発生しました: {e}")
+        import traceback
+        traceback.print_exc()
+        return STATUS_SYSTEM_ERROR, {"message": f"型チェック中にエラーが発生しました: {e}"}
+
+# 使用例
+if __name__ == "__main__":
+    import pandas as pd
+    
+    # サンプルデータ
+    data = {
+        'ID': [1, 2, 'A3', 4, 5],
+        '日付': ['2023/01/01', '2023/02/15', '不明', '2023-04-20', '2023年5月1日'],
+        '金額': [1000, 2500.5, '3000円', 4000, 'N/A'],
+        'メール': ['test@example.com', 'invalid', 'user@domain.co.jp', 'info@company', 'mail@test.ne.jp'],
+        '電話': ['03-1234-5678', '090-1234-5678', '123456789', '(03)1234-5678', '電話なし']
+    }
+    
+    df = pd.DataFrame(data)
+    print("サンプルデータ:")
+    print(df)
+    
+    # 様々な型指定でチェック
+    column_types = {
+        'ID': 'int',  # 整数型
+        '日付': 'date',  # 日付型
+        '金額': 'n',  # 数値型 (省略形)
+        'メール': 'Email',  # メールアドレス型 (大文字混在)
+        '電話': '電話番号'  # 電話番号型 (日本語)
+    }
+    
+    status, result = check_column_types_flexible(df, column_types)
+    
+    print("\n=== 最終結果 ===")
+    print(f"ステータス: {status}")
+    print(f"メッセージ: {result['message']}")
