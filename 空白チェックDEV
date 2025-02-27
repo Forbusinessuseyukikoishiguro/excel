@@ -1,0 +1,293 @@
+Excel ファイルの空白チェック機能を別のファイルから呼び出せるようにするためのモジュールを作成します。以下のように2つのファイルに分けて実装します。
+
+### 1. excel_empty_checker.py
+まず、空白チェック機能を実装した Python モジュールを作成します：
+
+```python
+# excel_empty_checker.py
+
+import pandas as pd
+import os
+
+def check_excel_empty_cells_with_header_row(file_path, sheet_name, column_names, header_row=1):
+    """
+    指定されたExcelファイルの特定列で空白セルをチェックする関数
+    2行目（インデックス1）をヘッダーとして使用
+    
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str
+        チェック対象のシート名
+    column_names : list
+        チェック対象の列名リスト
+    header_row : int, default=1
+        ヘッダー行のインデックス（デフォルトは2行目=インデックス1）
+    
+    Returns:
+    --------
+    dict
+        チェック結果を含む辞書
+    """
+    result = {
+        'status': 0,  # デフォルト：空白なし
+        'total_empty': 0,
+        'empty_by_column': {},
+        'empty_locations': [],
+        'message': ''
+    }
+    
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            result['status'] = 9
+            result['message'] = f"エラー: ファイル '{file_path}' が見つかりません"
+            return result
+        
+        # Excel ファイルを読み込む
+        try:
+            # まず利用可能なシートを確認
+            excel_file = pd.ExcelFile(file_path)
+            if sheet_name not in excel_file.sheet_names:
+                result['status'] = 9
+                result['message'] = f"エラー: シート '{sheet_name}' はファイル内に存在しません"
+                return result
+                
+            # ヘッダー行を指定してシートを読み込む
+            df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+            
+            print(f"ヘッダー行（{header_row+1}行目）: {list(df.columns)}")
+            
+        except Exception as e:
+            result['status'] = 9
+            result['message'] = f"Excel読み込みエラー: {e}"
+            return result
+        
+        # チェック対象の列を検証
+        valid_columns = []
+        for col in column_names:
+            if col in df.columns:
+                valid_columns.append(col)
+            else:
+                print(f"警告: 列 '{col}' はシート '{sheet_name}' に存在しません")
+        
+        if not valid_columns:
+            result['status'] = 9
+            result['message'] = f"エラー: 指定された列は '{sheet_name}' シートに存在しません"
+            return result
+        
+        # 列ごとに空白セルをチェック
+        for col in valid_columns:
+            # 結果辞書に列エントリを初期化
+            result['empty_by_column'][col] = 0
+            
+            # 空白セルを検出（NaN, None, 空文字列、空白文字のみを含む）
+            empty_mask = df[col].isnull() | (df[col].astype(str).str.strip() == '')
+            empty_indices = df.index[empty_mask].tolist()
+            
+            # 空白セル数を記録
+            result['empty_by_column'][col] = len(empty_indices)
+            result['total_empty'] += len(empty_indices)
+            
+            # 空白セルの位置情報を記録
+            for idx in empty_indices:
+                # Excel の行番号 (0始まりインデックス + ヘッダー + 2)
+                # ヘッダーが2行目（インデックス1）の場合、データは3行目から始まる
+                excel_row = idx + header_row + 2
+                
+                # 列の文字 (A, B, C, ...)
+                col_idx = df.columns.get_loc(col)
+                col_letter = chr(65 + col_idx)  # A=65 in ASCII
+                
+                result['empty_locations'].append({
+                    'column': col,
+                    'row_index': idx,
+                    'excel_row': excel_row,
+                    'cell_ref': f"{col_letter}{excel_row}"
+                })
+        
+        # 結果判定
+        if result['total_empty'] > 0:
+            result['status'] = 1
+            result['message'] = f"合計 {result['total_empty']} 個の空白セルが見つかりました"
+        else:
+            result['status'] = 0
+            result['message'] = "全ての指定列にデータが存在しています"
+        
+        return result
+        
+    except Exception as e:
+        result['status'] = 9
+        result['message'] = f"予期せぬエラーが発生しました: {e}"
+        return result
+
+def display_empty_cell_check_results(result):
+    """
+    空白セルチェックの結果を整形して表示する関数
+    
+    Parameters:
+    -----------
+    result : dict
+        check_excel_empty_cells_with_header_rowの戻り値
+    
+    Returns:
+    --------
+    int
+        ステータスコード
+    """
+    print(f"\n===== 空白セルチェック結果 =====")
+    print(f"ステータス: {result['status']}")
+    print(f"メッセージ: {result['message']}")
+    
+    if result['status'] == 1:  # 空白あり
+        print(f"\n列ごとの空白セル数:")
+        for col, count in result['empty_by_column'].items():
+            if count > 0:
+                print(f"  列 '{col}': {count} セル")
+        
+        print(f"\n空白セルの位置:")
+        for loc in result['empty_locations']:
+            print(f"  セル {loc['cell_ref']} (行 {loc['excel_row']}, 列 '{loc['column']}')")
+    
+    elif result['status'] == 0:  # 空白なし
+        print("全ての指定列にデータが存在しています")
+    
+    return result['status']
+
+# このファイルが直接実行された場合のテストコード
+if __name__ == "__main__":
+    print("このファイルは、他のファイルからインポートして使用してください。")
+    print("テスト実行する場合は以下のコメントを解除してください。")
+    
+    """
+    # テスト用パラメータを設定
+    file_path = "example.xlsx"
+    sheet_name = "Sheet1"
+    columns_to_check = ["列1", "列2", "列3"]  # 実際の列名に置き換える
+    header_row = 1  # 2行目をヘッダーとして使用
+    
+    # テスト実行
+    result = check_excel_empty_cells_with_header_row(file_path, sheet_name, columns_to_check, header_row)
+    display_empty_cell_check_results(result)
+    """
+```
+
+### 2. main.py
+次に、上記のモジュールを呼び出すメインファイルを作成します：
+
+```python
+# main.py
+
+# excel_empty_checker モジュールをインポート
+from excel_empty_checker import check_excel_empty_cells_with_header_row, display_empty_cell_check_results
+import sys
+
+def main():
+    """
+    Excelファイルの空白セルをチェックするメイン関数
+    """
+    # パラメータを設定
+    file_path = "example.xlsx"  # 実際のファイルパスに変更
+    sheet_name = "Sheet1"       # 実際のシート名に変更
+    
+    # 2行目にある実際の列名を指定
+    columns_to_check = ["A", "B", "C", "D", "E", "F", "G", "H"]  # 実際の列名に変更
+    
+    # 2行目をヘッダーとして空白チェック実行
+    result = check_excel_empty_cells_with_header_row(
+        file_path=file_path,
+        sheet_name=sheet_name,
+        column_names=columns_to_check,
+        header_row=1  # 2行目をヘッダーとして使用
+    )
+    
+    # 結果表示
+    status = display_empty_cell_check_results(result)
+    
+    # ステータスに応じた処理
+    if status == 0:
+        print("\n✅ チェック完了: 空白なし")
+    elif status == 1:
+        print("\n⚠️ チェック完了: 空白あり")
+    else:
+        print("\n❌ チェック失敗: エラー発生")
+    
+    # ステータスコードを返す
+    return status
+
+if __name__ == "__main__":
+    # メイン関数実行
+    status = main()
+    
+    # 終了コードとしてステータスを返す
+    sys.exit(status)
+```
+
+### 使用方法
+
+1. 2つのファイル (`excel_empty_checker.py` と `main.py`) を同じディレクトリに保存します。
+2. `main.py` の以下の部分を実際の環境に合わせて変更します：
+   - `file_path`: 実際のExcelファイルのパス
+   - `sheet_name`: チェックするシート名
+   - `columns_to_check`: チェックする列名のリスト
+3. コマンドラインから `python main.py` を実行します。
+
+### バリエーション
+
+異なるケースでの使用を想定して、`main.py` のバリエーションを以下に示します：
+
+#### コマンドライン引数からパラメータを取得する場合
+
+```python
+# main.py (コマンドライン引数バージョン)
+
+import argparse
+from excel_empty_checker import check_excel_empty_cells_with_header_row, display_empty_cell_check_results
+import sys
+
+def main():
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='Excelファイルの空白セルをチェックします')
+    parser.add_argument('--file', required=True, help='Excelファイルのパス')
+    parser.add_argument('--sheet', required=True, help='シート名')
+    parser.add_argument('--columns', required=True, help='チェックする列名（カンマ区切り）')
+    parser.add_argument('--header-row', type=int, default=1, help='ヘッダー行のインデックス（0始まり、デフォルトは1=2行目）')
+    
+    args = parser.parse_args()
+    
+    # 列名をリストに変換
+    columns_to_check = [col.strip() for col in args.columns.split(',')]
+    
+    # 空白チェック実行
+    result = check_excel_empty_cells_with_header_row(
+        file_path=args.file,
+        sheet_name=args.sheet,
+        column_names=columns_to_check,
+        header_row=args.header_row
+    )
+    
+    # 結果表示
+    status = display_empty_cell_check_results(result)
+    
+    return status
+
+if __name__ == "__main__":
+    status = main()
+    sys.exit(status)
+```
+
+このバージョンでは、以下のようにコマンドラインからパラメータを指定できます：
+
+```
+python main.py --file example.xlsx --sheet Sheet1 --columns "A,B,C,D,E" --header-row 1
+```
+
+### インポート時の注意点
+
+Python のモジュールをインポートする際には、以下の点に注意してください：
+
+1. 両方のファイルが同じディレクトリにある場合は上記の方法で問題ありません。
+2. 異なるディレクトリにある場合は、Pythonのシステムパスを調整するか、パッケージとして適切に構成する必要があります。
+
+これらのコードを使用することで、Excel ファイルの空白チェック機能を別のファイルから簡単に呼び出すことができます。
