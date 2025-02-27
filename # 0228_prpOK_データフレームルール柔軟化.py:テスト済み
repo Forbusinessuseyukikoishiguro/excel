@@ -1,0 +1,482 @@
+import pandas as pd
+import numpy as np
+import os
+from datetime import datetime
+
+
+def read_excel_flexible(file_path, sheet_name=None, header_row=1):
+    """
+    より柔軟なルールでExcelファイルを読み込み、空白があっても隣に値がある行/列を含める
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default=None
+        シート名（Noneの場合は最初のシートを使用）
+    header_row : int, default=1
+        ヘッダー行のインデックス（デフォルトは2行目=インデックス1）
+
+    Returns:
+    --------
+    tuple
+        (データフレーム, ステータスコード, メッセージ)
+    """
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            return None, 9, f"エラー: ファイル '{file_path}' が見つかりません"
+
+        # シート確認
+        try:
+            excel_file = pd.ExcelFile(file_path)
+            available_sheets = excel_file.sheet_names
+            print(f"利用可能なシート: {available_sheets}")
+
+            # シートが指定されていない場合は最初のシートを使用
+            if sheet_name is None:
+                sheet_name = available_sheets[0]
+                print(
+                    f"シート名が指定されていないため、最初のシート '{sheet_name}' を使用します"
+                )
+
+            # シートの存在確認
+            if sheet_name not in available_sheets:
+                print(
+                    f"警告: シート '{sheet_name}' はファイル内に存在しません。最初のシートを使用します。"
+                )
+                sheet_name = available_sheets[0]
+        except Exception as e:
+            return None, 9, f"Excelファイル読み込みエラー: {e}"
+
+        # 以下の設定でより柔軟にデータを読み込み
+        # - header=header_rowでヘッダー行を指定
+        # - keep_default_na=Trueで欠損値（NaN）を認識
+        # - na_values設定で様々な空白表現を欠損値として認識
+        # - dtype=objectで型変換を行わない
+        df = pd.read_excel(
+            file_path,
+            sheet_name=sheet_name,
+            header=header_row,
+            keep_default_na=True,
+            na_values=["", " ", "NULL", "null", "NaN", "nan", "NA", "na", "N/A", "n/a"],
+            dtype=object,  # すべての列をobject型として読み込み
+        )
+
+        # 完全に空の行を削除しない
+        # 完全に空の列を削除しない
+
+        # 列名を取得して表示
+        column_names = list(df.columns)
+        print(f"\n=== {header_row+1}行目の列名取得結果 ===")
+        for i, col_name in enumerate(column_names):
+            print(f"列{get_column_letter(i)} ({i+1}列目): {col_name}")
+
+        # データフレーム情報の出力
+        rows, cols = df.shape
+        print(f"\n=== データフレーム読み込み結果 ===")
+        print(f"ファイル: {file_path}")
+        print(f"シート: {sheet_name}")
+        print(f"ヘッダー行: {header_row+1}行目")
+        print(f"行数: {rows}行")
+        print(f"列数: {cols}列")
+
+        # 行/列ごとの空白セル数をカウント
+        empty_cells_by_row = {}
+        non_empty_cells_by_row = {}
+
+        for i in range(rows):
+            empty_count = df.iloc[i].isna().sum()
+            non_empty_count = cols - empty_count
+            empty_cells_by_row[i] = empty_count
+            non_empty_cells_by_row[i] = non_empty_count
+
+        empty_cells_by_col = {}
+        non_empty_cells_by_col = {}
+
+        for j in range(cols):
+            empty_count = df.iloc[:, j].isna().sum()
+            non_empty_count = rows - empty_count
+            col_name = df.columns[j]
+            col_letter = get_column_letter(j)
+            empty_cells_by_col[col_name] = empty_count
+            non_empty_cells_by_col[col_name] = non_empty_count
+            print(
+                f"列{col_letter} ('{col_name}'): 空白セル {empty_count}個, 値あり {non_empty_count}個"
+            )
+
+        print("\n行別の空白セル数:")
+        for row_idx, empty_count in empty_cells_by_row.items():
+            row_num = row_idx + header_row + 2  # Excelの行番号に変換
+            non_empty = non_empty_cells_by_row[row_idx]
+            print(f"行{row_num}: 空白セル {empty_count}個, 値あり {non_empty}個")
+
+        # 全体の空白セル数
+        total_cells = rows * cols
+        total_empty = df.isna().sum().sum()
+        total_non_empty = total_cells - total_empty
+
+        print(f"\n全体のセル数: {total_cells}個")
+        print(f"空白セル数: {total_empty}個 ({total_empty/total_cells*100:.1f}%)")
+        print(
+            f"値ありセル数: {total_non_empty}個 ({total_non_empty/total_cells*100:.1f}%)"
+        )
+
+        # 先頭5行のデータを表示
+        print("\n先頭5行のデータ:")
+        pd.set_option("display.max_columns", None)  # すべての列を表示
+        pd.set_option("display.width", 1000)  # 表示幅を広げる
+        print(df.head(5).fillna(""))  # 空白セルを空文字列で表示
+
+        return df, 0, "データフレームの読み込みに成功しました"
+
+    except Exception as e:
+        return None, 9, f"予期せぬエラーが発生しました: {e}"
+
+
+def check_empty_cells(df):
+    """
+    データフレームの空欄セルをチェックし、どこに空欄があるかを表示する
+
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        チェック対象のデータフレーム
+
+    Returns:
+    --------
+    dict
+        空欄チェック結果
+    """
+    if df is None:
+        print("エラー: データフレームがNoneです")
+        return None
+
+    try:
+        result = {"total_empty": 0, "empty_by_column": {}, "empty_locations": []}
+
+        rows, cols = df.shape
+
+        # 全列の空欄をチェック
+        for col_idx, col_name in enumerate(df.columns):
+            # NaNをチェック
+            empty_mask = df[col_name].isna()
+            empty_indices = df.index[empty_mask].tolist()
+
+            # 列ごとの空欄数を記録
+            result["empty_by_column"][col_name] = len(empty_indices)
+            result["total_empty"] += len(empty_indices)
+
+            # 空欄の位置情報を記録
+            for row_idx in empty_indices:
+                excel_row = row_idx + 3  # 2行目ヘッダーなので、データは3行目から始まる
+                excel_col = get_column_letter(col_idx)
+
+                result["empty_locations"].append(
+                    {
+                        "column": col_name,
+                        "row_index": row_idx,
+                        "excel_row": excel_row,
+                        "excel_column": excel_col,
+                        "cell_ref": f"{excel_col}{excel_row}",
+                    }
+                )
+
+        # 結果を表示
+        print(f"\n=== 空欄チェック結果 ===")
+        print(f"チェック対象: 全列 ({cols}列)")
+        print(f"空欄の総数: {result['total_empty']}セル")
+
+        if result["total_empty"] > 0:
+            print("\n列ごとの空欄数:")
+            for col, count in result["empty_by_column"].items():
+                if count > 0:
+                    print(f"  列 '{col}': {count}セル")
+
+            print("\n空欄の位置 (最大20件表示):")
+            for i, loc in enumerate(result["empty_locations"]):
+                if i >= 20:
+                    print(f"  ... 他 {len(result['empty_locations']) - 20} 件")
+                    break
+                print(
+                    f"  セル {loc['cell_ref']} (行{loc['excel_row']}, 列{loc['excel_column']})"
+                )
+        else:
+            print("空欄は見つかりませんでした")
+
+        return result
+
+    except Exception as e:
+        print(f"空欄チェック中にエラーが発生しました: {e}")
+        return None
+
+
+def check_column_types(df, column_names, expected_types):
+    """
+    指定した列のデータ型をチェックする
+
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        チェック対象のデータフレーム
+    column_names : list
+        チェック対象の列名リスト
+    expected_types : list
+        期待されるデータ型のリスト
+
+    Returns:
+    --------
+    dict
+        型チェック結果
+    """
+    if df is None:
+        print("エラー: データフレームがNoneです")
+        return None
+
+    if len(column_names) != len(expected_types):
+        print("エラー: 列名リストと型リストの長さが一致しません")
+        return None
+
+    try:
+        result = {"total_errors": 0, "errors_by_column": {}, "error_locations": []}
+
+        # 型チェック関数
+        type_checkers = {
+            "int": is_integer,
+            "float": is_float,
+            "date": is_date,
+            "str": lambda x: True,  # 文字列型は常にOK
+            "bool": is_boolean,
+        }
+
+        # 列ごとに型チェック
+        for col_name, expected_type in zip(column_names, expected_types):
+            if col_name not in df.columns:
+                print(f"警告: 列 '{col_name}' はデータフレームに存在しません")
+                continue
+
+            if expected_type not in type_checkers:
+                print(
+                    f"警告: 未知の型指定 '{expected_type}' が列 '{col_name}' に指定されました"
+                )
+                continue
+
+            # 型チェック関数を取得
+            type_checker = type_checkers[expected_type]
+
+            # 列インデックスを取得
+            col_idx = df.columns.get_loc(col_name)
+
+            # 結果辞書を初期化
+            result["errors_by_column"][col_name] = 0
+
+            # NaNでない各値について型チェック
+            for row_idx, value in enumerate(df[col_name]):
+                if pd.isna(value):
+                    continue  # 空白セルはスキップ
+
+                if not type_checker(value):
+                    # 型エラーを記録
+                    result["errors_by_column"][col_name] += 1
+                    result["total_errors"] += 1
+
+                    excel_row = (
+                        row_idx + 3
+                    )  # 2行目ヘッダーなので、データは3行目から始まる
+                    excel_col = get_column_letter(col_idx)
+
+                    result["error_locations"].append(
+                        {
+                            "column": col_name,
+                            "row_index": row_idx,
+                            "excel_row": excel_row,
+                            "excel_column": excel_col,
+                            "cell_ref": f"{excel_col}{excel_row}",
+                            "expected_type": expected_type,
+                            "actual_value": str(value),
+                            "actual_type": type(value).__name__,
+                        }
+                    )
+
+        # 結果を表示
+        print(f"\n=== 型チェック結果 ===")
+        print(f"チェック対象列: {', '.join(column_names)}")
+        print(f"期待される型: {', '.join(expected_types)}")
+        print(f"型エラーの総数: {result['total_errors']}個")
+
+        if result["total_errors"] > 0:
+            print("\n列ごとの型エラー数:")
+            for col, count in result["errors_by_column"].items():
+                if count > 0:
+                    idx = column_names.index(col)
+                    print(f"  列 '{col}' (期待型: {expected_types[idx]}): {count}個")
+
+            print("\n型エラーの位置:")
+            for loc in result["error_locations"]:
+                print(
+                    f"  セル {loc['cell_ref']} (行{loc['excel_row']}, 列{loc['excel_column']}): "
+                    f"値 '{loc['actual_value']}', 実際の型 '{loc['actual_type']}', 期待型 '{loc['expected_type']}'"
+                )
+        else:
+            print("型エラーは見つかりませんでした")
+
+        return result
+
+    except Exception as e:
+        print(f"型チェック中にエラーが発生しました: {e}")
+        return None
+
+
+# ユーティリティ関数
+def get_column_letter(col_idx):
+    """列インデックスからExcel列文字（A, B, ... Z, AA, AB, ...）を取得"""
+    result = ""
+    temp = col_idx
+    while True:
+        remainder = temp % 26
+        result = chr(65 + remainder) + result
+        temp = temp // 26 - 1
+        if temp < 0:
+            break
+    return result
+
+
+def is_integer(value):
+    """値が整数型かどうかをチェック"""
+    if isinstance(value, (int, np.int64, np.int32)) and not isinstance(value, bool):
+        return True
+    try:
+        # 文字列をfloatに変換後、intと等しいかチェック
+        val_str = str(value).strip()
+        val_float = float(val_str)
+        return val_float.is_integer()
+    except (ValueError, TypeError):
+        return False
+
+
+def is_float(value):
+    """値が浮動小数点型かどうかをチェック"""
+    if isinstance(value, (float, np.float64, np.float32)):
+        return True
+    try:
+        float(str(value).strip())
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def is_date(value):
+    """値が日付型かどうかをチェック"""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return True
+
+    # 文字列として日付形式かチェック
+    try:
+        value_str = str(value).strip()
+        date_formats = [
+            "%Y/%m/%d",
+            "%Y-%m-%d",
+            "%Y年%m月%d日",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+        ]
+
+        for fmt in date_formats:
+            try:
+                datetime.strptime(value_str, fmt)
+                return True
+            except ValueError:
+                continue
+    except:
+        pass
+
+    return False
+
+
+def is_boolean(value):
+    """値が論理型かどうかをチェック"""
+    if isinstance(value, (bool, np.bool_)):
+        return True
+
+    try:
+        value_str = str(value).strip().lower()
+        return value_str in ["true", "false", "1", "0", "yes", "no", "はい", "いいえ"]
+    except:
+        return False
+
+
+# メイン関数
+def analyze_excel_with_flexible_rules(file_path, sheet_name=None, header_row=1):
+    """
+    柔軟なルールでExcelファイルを分析する
+
+    Parameters:
+    -----------
+    file_path : str
+        Excelファイルのパス
+    sheet_name : str, default=None
+        シート名（Noneの場合は最初のシートを使用）
+    header_row : int, default=1
+        ヘッダー行のインデックス（デフォルトは2行目=インデックス1）
+    """
+    print(f"ファイル '{file_path}' の分析を開始します...\n")
+
+    # 1. 柔軟なルールでデータフレームを読み込む
+    df, status, message = read_excel_flexible(file_path, sheet_name, header_row)
+
+    if status != 0:
+        print(f"エラー: {message}")
+        return
+
+    # 2. 空欄チェック
+    print("\n空欄チェックを実行します...")
+    empty_result = check_empty_cells(df)
+
+    # 3. B, C, E列の型チェック
+    # 列名を確認
+    column_names = list(df.columns)
+
+    if len(column_names) > 1:  # B列があるか確認
+        b_col = column_names[1]
+        if len(column_names) > 2:  # C列があるか確認
+            c_col = column_names[2]
+            if len(column_names) > 4:  # E列があるか確認
+                e_col = column_names[4]
+
+                # 型チェック実行
+                print("\nB, C, E列の型チェックを実行します...")
+                type_result = check_column_types(
+                    df, [b_col, c_col, e_col], ["date", "str", "float"]
+                )
+            else:
+                print("警告: E列が存在しないため、B, C列のみ型チェックを実行します...")
+                type_result = check_column_types(df, [b_col, c_col], ["date", "str"])
+        else:
+            print("警告: C列が存在しないため、B列のみ型チェックを実行します...")
+            type_result = check_column_types(df, [b_col], ["date"])
+    else:
+        print("警告: B列が存在しないため、型チェックをスキップします")
+
+    # 4. データフレームの統計情報
+    print("\n=== データフレーム統計情報 ===")
+    print(f"行数: {df.shape[0]}行")
+    print(f"列数: {df.shape[1]}列")
+
+    # 値が存在する行数をカウント（完全に空の行は除外）
+    non_empty_rows = df.dropna(how="all").shape[0]
+    print(f"値が存在する行数: {non_empty_rows}行")
+
+    # 値が存在する列数をカウント（完全に空の列は除外）
+    non_empty_cols = df.dropna(axis=1, how="all").shape[1]
+    print(f"値が存在する列数: {non_empty_cols}列")
+
+    print(f"\n分析が完了しました。")
+
+
+# スクリプト実行部分
+if __name__ == "__main__":
+    # ファイルパスを指定して実行
+    file_path = r"C:\Users\yukik\Desktop\ex\0228\in2.xlsx"
+    analyze_excel_with_flexible_rules(file_path)
+
+# 0228_prpOK_データフレームルール柔軟化.py:テスト済み
