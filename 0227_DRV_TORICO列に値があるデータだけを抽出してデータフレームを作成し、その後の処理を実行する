@@ -1,0 +1,75 @@
+はい、TORICO列に値があるデータだけを抽出してデータフレームを作成し、その後の処理を実行することは完全に可能です。これは現在のコードの `process_equipment_data` メソッド内で既に実装されている部分でもあります。
+
+具体的に、コードでは以下の部分がTORICO列（A列）に値があるデータのみをフィルタリングしています：
+
+```python
+# TORICO列（A列）に値があるデータでフィルタリング
+torico_column = df_original.columns[0]  # 最初の列を"TORICO"列と仮定
+
+# フィルタリング: TORICO列が空でないものを抽出
+df_filtered = df_original[
+    df_original[torico_column].notna()
+    & (df_original[torico_column].astype(str).str.strip() != "")
+]
+```
+
+このコードは以下の処理を行っています：
+
+1. 最初の列（A列）を「TORICO列」として扱う
+2. `.notna()` で欠損値（NaNやNull）でないデータを選択
+3. 同時に `.strip()` で空白を取り除いた後、空文字列でないデータを選択
+4. 両方の条件を満たすデータだけを含む新しいデータフレーム `df_filtered` を作成
+
+この `df_filtered` データフレームには、TORICO列に値があるレコードだけが含まれます。その後のコードでは、このフィルタリングされたデータフレームを使用して設備名リストに基づく追加フィルタリングや並べ替えなどを行っています。
+
+もし別の処理（空白チェックや横行計算検証）でもTORICO列でフィルタリングしたデータを使いたい場合は、各メソッドを修正して同様のフィルタリング処理を追加することができます。
+
+例えば、空白チェック処理にTORICO列フィルタリングを追加するなら：
+
+```python
+def check_excel_blank(file_path=r"C:\Users\yukik\Desktop\ex\0226test_log\in1.xlsx"):
+    """Excelの空白チェックを実行する関数（TORICO列に値があるデータのみを対象）"""
+    if not check_file_exists(file_path):
+        return 9  # エラー
+        
+    # シート名を指定
+    sheet_name = "データフレーム"
+    
+    # Excelファイル読み込み
+    df_original = pd.read_excel(file_path, sheet_name=sheet_name)
+    
+    # TORICO列（A列）に値があるデータでフィルタリング
+    torico_column = df_original.columns[0]  # 最初の列を"TORICO"列と仮定
+    df_filtered = df_original[
+        df_original[torico_column].notna()
+        & (df_original[torico_column].astype(str).str.strip() != "")
+    ]
+    
+    print(f"TORICO列に値がある行のみでフィルタリングしました（{len(df_filtered)}行）")
+    
+    # C列、D列、E列をチェック（0ベースなので2,3,4になる）
+    columns_to_check = [2, 3, 4]
+    
+    # フィルタリングされたデータフレームを使用して空白チェック
+    excel_debugger = ExcelDataFrameDebugger(file_path)
+    status_id, empty_cells = excel_debugger.check_empty_cells(df_filtered, columns_to_check)
+    
+    # 結果表示
+    excel_debugger.display_empty_cells_report(status_id, empty_cells)
+    
+    print(f"\n最終ステータスID: {status_id}")
+    
+    # ステータスIDに応じたメッセージ
+    if status_id == 0:
+        print("全ての列にデータが存在しています。処理を続行します。")
+    elif status_id == 1:
+        print("ユーザーエラー: 必須項目に空白があります。データを修正してください。")
+    elif status_id == 2:
+        print("必要なデータが存在しません。")
+    elif status_id == 9:
+        print("予期せぬエラーが発生しました。")
+    
+    return status_id
+```
+
+このようにすれば、空白チェックもTORICO列に値があるデータのみを対象に実行できます。同様のアプローチで横行計算検証にも同じフィルタリングを適用できます。
