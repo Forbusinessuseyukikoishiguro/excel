@@ -1,0 +1,9 @@
+def print_a_by_list_length(lst):
+    count = len(lst)
+    print("あ" * count)
+
+
+# 使用例
+my_list = [10, 20, 30, 40, 50]
+print_a_by_list_length(my_list)
+#03/03_リストの個数分あを出力
