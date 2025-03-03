@@ -1,0 +1,47 @@
+import traceback
+import sys
+
+def add_numbers(a, b):
+    """
+    二つの数値を足し算する関数
+    予期せぬエラーが発生した場合はトレースバックを表示する
+    """
+    try:
+        # 正常なケース: 足し算を実行
+        result = a + b
+        return result
+    except Exception as e:
+        # 予期せぬエラーが発生した場合
+        print(f"予期せぬエラーが発生しました: {e}")
+        
+        # トレースバック情報を取得して表示
+        print("\n=== エラーのトレースバック情報 ===")
+        traceback.print_exc()
+        
+        # または文字列として取得する場合
+        trace_str = traceback.format_exc()
+        print(f"\n=== フォーマット済みトレースバック ===\n{trace_str}")
+        
+        # sys.exc_infoを使用して詳細情報を取得
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        print(f"\n例外の型: {exc_type.__name__}")
+        print(f"例外のメッセージ: {exc_value}")
+        
+        return None  # エラー時はNoneを返す
+
+# 正常なケースのテスト
+print("=== 正常なケースのテスト ===")
+result = add_numbers(10, 5)
+print(f"計算結果: {result}")
+
+# 予期せぬエラーのテスト
+print("\n=== 予期せぬエラーのテスト ===")
+# オブジェクト同士の加算で予期せぬエラーを発生させる
+class TestObject:
+    pass
+
+obj1 = TestObject()
+obj2 = TestObject()
+result = add_numbers(obj1, obj2)
+print(f"エラー後の結果: {result}")
+
