@@ -1,0 +1,73 @@
+import traceback
+
+def print_a_by_list_length(lst):
+    """
+    リストの要素数分だけ「あ」を出力する関数
+    
+    引数:
+        lst (list): 任意のリスト
+    """
+    # 型チェックを追加
+    if lst is None:
+        print("入力がNoneです。「あ」は出力できません。")
+        return
+    
+    # 型変換を試みる
+    try:
+        if not isinstance(lst, list):
+            if isinstance(lst, (str, dict, set, tuple)):
+                # 文字列、辞書、集合、タプルはそのままlen()が使える
+                count = len(lst)
+                print(f"※警告: リスト以外の型({type(lst).__name__})が渡されました")
+            elif isinstance(lst, int):
+                # 整数の場合は桁数を長さとする
+                count = len(str(lst))
+                print(f"※警告: 整数が渡されました。桁数を長さとして使用します")
+            else:
+                # その他の型は処理できない
+                print(f"※エラー: 対応していない型({type(lst).__name__})です")
+                return
+        else:
+            # リストなら通常通り処理
+            count = len(lst)
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {e}")
+        print("トレースバック情報:")
+        traceback.print_exc()
+        return
+    
+    # 「あ」を出力
+    print("あ" * count)
+
+# 使用例
+def main():
+    # 様々な正常系のテストケース
+    test_cases = [
+        [1, 2, 3, 4, 5],           # 5要素のリスト
+        ["a", "b", "c"],           # 3要素のリスト
+        [10, 20],                  # 2要素のリスト
+        [0] * 10,                  # 10要素のリスト
+        []                         # 空リスト
+    ]
+    
+    for i, test_case in enumerate(test_cases):
+        print(f"テストケース{i+1} ({len(test_case)}要素):")
+        print_a_by_list_length(test_case)
+        print()  # 見やすくするための空行
+    
+    # エラーケースも追加
+    error_cases = [
+        None,                      # None
+        "これはリストではありません",  # 文字列
+        {"key": "value"},          # 辞書
+        123                        # 整数
+    ]
+    
+    for i, error_case in enumerate(error_cases):
+        print(f"エラーケース{i+1}:")
+        print_a_by_list_length(error_case)
+        print()
+
+if __name__ == "__main__":
+    main()
+#型てきせいか
