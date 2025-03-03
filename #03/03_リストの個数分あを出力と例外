@@ -1,0 +1,36 @@
+def print_a_by_list_length(lst):
+    try:
+        # リストかどうかチェック
+        if not isinstance(lst, list):
+            raise TypeError("入力はリストである必要があります")
+        
+        # 空リストのチェック
+        if not lst:
+            print("リストが空です。「あ」は出力されません。")
+            return
+            
+        # リストの長さを取得して「あ」を出力
+        count = len(lst)
+        print("あ" * count)
+        
+    except TypeError as e:
+        print(f"エラー: {e}")
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {e}")
+
+
+# 使用例
+my_list = [10, 20, 30, 40, 50]
+print_a_by_list_length(my_list)
+
+# エラーケースのテスト
+print("\n【エラーケースのテスト】")
+print("文字列を渡した場合:")
+print_a_by_list_length("これはリストではありません")
+
+print("\n空のリストを渡した場合:")
+print_a_by_list_length([])
+
+print("\nNoneを渡した場合:")
+print_a_by_list_length(None)
+#03/03_リストの個数分あを出力
