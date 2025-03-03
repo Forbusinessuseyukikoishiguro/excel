@@ -1,0 +1,61 @@
+
+import traceback
+import sys
+
+def add_numbers(a, b):
+    """
+    二つの数値を足し算する関数
+    数値以外が入力された場合は例外をトレースバックする
+    """
+    try:
+        result = a + b
+        return result
+    except TypeError as e:
+        print(f"TypeError発生: {e}")
+        print("\n--- エラーのトレースバック情報 ---")
+        traceback.print_exc()
+        return None
+    except Exception as e:
+        print(f"予期せぬエラー発生: {e}")
+        print("\n--- エラーのトレースバック情報 ---")
+        print("".join(traceback.format_exception(*sys.exc_info())))
+        return None
+
+# 正常なケース
+print("正常なケース:")
+result = add_numbers(5, 3)
+print(f"計算結果: {result}\n")
+
+# 型エラーのケース
+print("型エラーのケース:")
+result = add_numbers("5", 3)
+print(f"計算結果: {result}\n")
+
+# より詳細なトレースバック情報を取得する例
+def detailed_exception_demo():
+    try:
+        # あえて例外を発生させる
+        result = 1 / 0
+    except Exception as e:
+        print(f"エラー発生: {e}")
+        
+        # 現在の例外情報を取得
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        
+        # トレースバック情報の取得方法いろいろ
+        print("\n--- format_exc() による出力 ---")
+        print(traceback.format_exc())
+        
+        print("\n--- extract_tb() による出力 ---")
+        tb_list = traceback.extract_tb(exc_traceback)
+        for filename, lineno, name, line in tb_list:
+            print(f"ファイル: {filename}, 行番号: {lineno}, 関数名: {name}, コード: {line}")
+        
+        print("\n--- format_exception() による出力 ---")
+        format_exception = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        print("".join(format_exception))
+
+print("詳細なトレースバック情報の例:")
+detailed_exception_demo()
+
+#トレースバック
