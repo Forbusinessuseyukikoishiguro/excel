@@ -1,0 +1,194 @@
+import pandas as pd
+import os
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import datetime
+
+
+def get_excel_dataframe(file_path, sheet_name=0, debug=True):
+    """
+    Excelファイルからデータフレームを取得し、デバッグ出力する関数
+
+    Args:
+        file_path (str): Excelファイルのパス
+        sheet_name (str or int): シート名または位置 (デフォルト: 0 = 最初のシート)
+        debug (bool): デバッグ出力を行うかどうか (デフォルト: True)
+
+    Returns:
+        pandas.DataFrame: 読み込んだデータフレーム
+    """
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            print(f"エラー: ファイル '{file_path}' は存在しません。")
+            return None
+
+        # Excelファイルを読み込む
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        if debug:
+            print(f"=========== デバッグ情報: {file_path} ===========")
+            print(
+                f"読み込み時刻: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            print(f"シート: {sheet_name}")
+            print(f"行数: {df.shape[0]}")
+            print(f"列数: {df.shape[1]}")
+            print(f"列名: {list(df.columns)}")
+            print("\nデータプレビュー (先頭5行):")
+            print(df.head())
+            print("\nデータ型情報:")
+            print(df.dtypes)
+            print("=" * 50)
+
+        return df
+
+    except Exception as e:
+        print(f"エラー: ファイル読み込み中に例外が発生しました: {str(e)}")
+        return None
+
+
+def write_dataframe_to_excel(df, output_path, sheet_name="Sheet1", debug=True):
+    """
+    データフレームをExcelファイルに書き出す関数
+
+    Args:
+        df (pandas.DataFrame): 書き出すデータフレーム
+        output_path (str): 出力先Excelファイルのパス
+        sheet_name (str): 出力先シート名 (デフォルト: 'Sheet1')
+        debug (bool): デバッグ出力を行うかどうか (デフォルト: True)
+
+    Returns:
+        bool: 処理が成功したかどうか
+    """
+    try:
+        # 出力先ディレクトリが存在しない場合は作成
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # データフレームをExcelファイルとして保存
+        df.to_excel(output_path, sheet_name=sheet_name, index=False)
+
+        if debug:
+            print(f"=========== 書き出し情報: {output_path} ===========")
+            print(
+                f"書き出し時刻: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            print(f"シート名: {sheet_name}")
+            print(f"出力ファイル: {os.path.abspath(output_path)}")
+            print(f"書き出した行数: {df.shape[0]}")
+            print(f"書き出した列数: {df.shape[1]}")
+            print(f"ファイルサイズ: {os.path.getsize(output_path) / 1024:.2f} KB")
+            print("=" * 50)
+
+        return True
+
+    except Exception as e:
+        print(f"エラー: ファイル書き出し中に例外が発生しました: {str(e)}")
+        return False
+
+
+def filter_and_highlight(
+    input_path,
+    output_path,
+    filter_column,
+    filter_values,
+    highlight_color="FFFF00",
+    debug=True,
+):
+    """
+    特定の列の値に基づいてデータをフィルタリングし、ハイライト表示する関数
+
+    Args:
+        input_path (str): 入力Excelファイルのパス
+        output_path (str): 出力Excelファイルのパス
+        filter_column (str or int): フィルタリングする列名または列番号
+        filter_values (list): フィルタリングする値のリスト
+        highlight_color (str): ハイライト色のHEXコード (デフォルト: 黄色 "FFFF00")
+        debug (bool): デバッグ出力を行うかどうか (デフォルト: True)
+
+    Returns:
+        pandas.DataFrame: フィルタリングされたデータフレーム
+    """
+    try:
+        # データフレームを読み込む
+        df = get_excel_dataframe(input_path, debug=debug)
+        if df is None:
+            return None
+
+        # 列名や列番号を処理
+        if isinstance(filter_column, int):
+            column_name = df.columns[filter_column]
+        else:
+            column_name = filter_column
+
+        # フィルタリング
+        filtered_df = df[df[column_name].isin(filter_values)]
+
+        if debug:
+            print(f"\n=========== フィルタリング情報 ===========")
+            print(f"フィルタ対象列: {column_name}")
+            print(f"フィルタ値: {filter_values}")
+            print(f"フィルタリング前の行数: {df.shape[0]}")
+            print(f"フィルタリング後の行数: {filtered_df.shape[0]}")
+            print("フィルタリング結果 (先頭5行):")
+            print(filtered_df.head())
+            print("=" * 50)
+
+        # フィルタリング結果を保存
+        write_dataframe_to_excel(filtered_df, output_path, debug=debug)
+
+        # ハイライト処理 (openpyxlを使用)
+        wb = load_workbook(output_path)
+        ws = wb.active
+
+        # 塗りつぶしスタイルを定義
+        fill = PatternFill(
+            start_color=highlight_color, end_color=highlight_color, fill_type="solid"
+        )
+
+        # ヘッダー行を除く全セルに色を付ける
+        for row in range(
+            2, len(filtered_df) + 2
+        ):  # Excelは1始まり、ヘッダーがあるので2から
+            for col in range(1, len(df.columns) + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.fill = fill
+
+        # 変更を保存
+        wb.save(output_path)
+
+        if debug:
+            print(f"\n=========== ハイライト情報 ===========")
+            print(f"ハイライト色: #{highlight_color}")
+            print(f"ハイライト適用行数: {len(filtered_df)}")
+            print(f"最終出力ファイル: {os.path.abspath(output_path)}")
+            print("=" * 50)
+
+        return filtered_df
+
+    except Exception as e:
+        print(f"エラー: 処理中に例外が発生しました: {str(e)}")
+        return None
+
+
+# 使用例
+if __name__ == "__main__":
+    # ファイルパスを設定
+    file_path = r"C:\Users\yukik\Desktop\ex\0303iro\itotest0303.xlsx"
+    output_path = r"C:\Users\yukik\Desktop\ex\0303iro\0303output.xlsx"
+
+    # データフレームを取得して表示
+    print("データフレームを取得しています...")
+    df = get_excel_dataframe(file_path)
+
+    # 新しいExcelに書き出し
+    print("\nExcelファイルに書き出しています...")
+    write_dataframe_to_excel(df, output_path)
+
+    print("\n処理が完了しました！")
+
+##Excelデータフレーム取得・デバッグ・出力ツールPRO
+
+# 2025_0303_Excelファイルのデータフレーム取得して、アウトプットに別ファイルのExcelに書き出すプログラム＿参考OK
