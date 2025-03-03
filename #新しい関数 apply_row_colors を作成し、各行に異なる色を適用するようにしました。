@@ -1,0 +1,136 @@
+import pandas as pd
+import os
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import datetime
+
+
+def get_excel_dataframe(file_path, sheet_name=0, debug=True):
+    """
+    Excelファイルからデータフレームを取得し、デバッグ出力する関数
+    """
+    try:
+        if not os.path.exists(file_path):
+            print(f"エラー: ファイル '{file_path}' は存在しません。")
+            return None
+
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        if debug:
+            print(f"=========== デバッグ情報: {file_path} ===========")
+            print(
+                f"読み込み時刻: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            print(f"シート: {sheet_name}")
+            print(f"行数: {df.shape[0]}")
+            print(f"列数: {df.shape[1]}")
+            print(f"列名: {list(df.columns)}")
+            print("\nデータプレビュー (先頭5行):")
+            print(df.head())
+            print("=" * 50)
+
+        return df
+
+    except Exception as e:
+        print(f"エラー: ファイル読み込み中に例外が発生しました: {str(e)}")
+        return None
+
+
+def write_dataframe_to_excel(df, output_path, sheet_name="Sheet1", debug=True):
+    """
+    データフレームをExcelファイルに書き出す関数
+    """
+    try:
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        df.to_excel(output_path, sheet_name=sheet_name, index=False)
+
+        if debug:
+            print(f"=========== 書き出し情報: {output_path} ===========")
+            print(
+                f"書き出し時刻: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            print(f"シート名: {sheet_name}")
+            print(f"出力ファイル: {os.path.abspath(output_path)}")
+            print(f"書き出した行数: {df.shape[0]}")
+            print(f"書き出した列数: {df.shape[1]}")
+            print(f"ファイルサイズ: {os.path.getsize(output_path) / 1024:.2f} KB")
+            print("=" * 50)
+
+        return True
+
+    except Exception as e:
+        print(f"エラー: ファイル書き出し中に例外が発生しました: {str(e)}")
+        return False
+
+
+def apply_row_colors(input_path, output_path, debug=True):
+    """
+    Excelの各行に色を適用する関数
+    """
+    try:
+        # データを読み込む
+        df = get_excel_dataframe(input_path, debug=debug)
+        if df is None:
+            return None
+
+        # データをそのまま書き出す
+        write_dataframe_to_excel(df, output_path, debug=debug)
+
+        # 色の設定
+        row_colors = {
+            1: "FF9999",  # 1行目 - 薄い赤
+            2: "9999FF",  # 2行目 - 薄い青
+            3: "FFFF99",  # 3行目 - 薄い黄色
+            4: "99FF99",  # 4行目 - 薄い緑
+            5: "FF99FF",  # 5行目 - 薄い紫
+        }
+
+        # 出力ファイルを開く
+        wb = load_workbook(output_path)
+        ws = wb.active
+
+        # 各行に色を適用
+        for row in range(1, min(len(df) + 2, 6)):  # ヘッダー行を含む最大5行
+            row_color = row_colors.get(row, "FFFFFF")  # デフォルトは白
+            fill = PatternFill(
+                start_color=row_color, end_color=row_color, fill_type="solid"
+            )
+
+            for col in range(1, len(df.columns) + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.fill = fill
+
+        wb.save(output_path)
+        wb.close()
+
+        if debug:
+            print(f"\n=========== 行の色付け情報 ===========")
+            print(f"色付けした行数: {min(len(df) + 1, 5)}")
+            print(f"最終出力ファイル: {os.path.abspath(output_path)}")
+            print("=" * 50)
+
+        return df
+
+    except Exception as e:
+        print(f"エラー: 処理中に例外が発生しました: {str(e)}")
+        return None
+
+
+# メイン処理
+if __name__ == "__main__":
+    # ファイルパスを設定
+    file_path = r"C:\Users\yukik\Desktop\ex\0303iro\itotest0303.xlsx"
+    output_path = r"C:\Users\yukik\Desktop\ex\0303iro\0303output.xlsx"
+
+    print("データを処理し、行に色を適用しています...")
+    apply_row_colors(file_path, output_path)
+    print("\n処理が完了しました！")
+
+#新しい関数 apply_row_colors を作成し、各行に異なる色を適用するようにしました。
+#色のマッピングをディクショナリ（row_colors）で定義し、1行目から5行目までそれぞれ薄い赤、青、黄色、緑、紫の色を設定しています。
+#range(1, min(len(df) + 2, 6)) でヘッダー行（1行目）を含む最大5行に色を適用します。
+
+#これにより、出力Excelファイルの1行目（ヘッダー行）から順に色が適用されます。色のコードはお好みに合わせて変更できます。
