@@ -1,0 +1,49 @@
+def add(a, b):
+    """
+    2つの値を足し算する関数
+    予期せぬエラーが発生した場合は例外をキャッチして情報を表示する
+    """
+    try:
+        # 足し算を実行
+        result = a + b
+        return result
+    except Exception as e:
+        # 予期せぬエラーが発生した場合の処理
+        error_type = type(e).__name__
+        error_message = str(e)
+        
+        print(f"予期せぬエラーが発生しました: {error_type}")
+        print(f"エラー詳細: {error_message}")
+        
+        # エラーの発生場所を取得するためのトレースバック情報
+        import traceback
+        print("\n--- トレースバック情報 ---")
+        traceback.print_exc()
+        
+        # エラー発生時はNoneを返す
+        return None
+
+# 正常なケースのテスト
+print("===== 正常なケースのテスト =====")
+result = add(5, 3)
+print(f"結果: {result}")  # 結果: 8
+
+# 予期せぬエラーのテスト (型の不一致)
+print("\n===== 文字列と数値の加算テスト =====")
+result = add("文字列", 10)
+print(f"結果: {result}")  # 結果: None (エラー発生)
+
+# 予期せぬエラーのテスト (オブジェクト同士の加算)
+print("\n===== オブジェクト同士の加算テスト =====")
+class TestObject:
+    pass
+
+obj1 = TestObject()
+obj2 = TestObject()
+result = add(obj1, obj2)
+print(f"結果: {result}")  # 結果: None (エラー発生)
+
+# None値を含む加算のテスト
+print("\n===== None値を含む加算テスト =====")
+result = add(None, 5)
+print(f"結果: {result}")  # 結果: None (エラー発生)
