@@ -1,0 +1,13 @@
+class Adder:
+    def add(self, a, b):
+        return a + b
+
+# テスト用のコード
+if __name__ == "__main__":
+    adder = Adder()
+    result = adder.add(3, 5)
+    print(f"3 + 5 = {result}")
+    
+    adder2 = Adder()
+    result2 = adder2.add(4, 100)
+    print(result2)
